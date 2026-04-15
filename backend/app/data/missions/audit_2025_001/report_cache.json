@@ -1,0 +1,1362 @@
+{
+  "cached_at": "2026-04-15T16:09:37+00:00",
+  "audit_input_mtime_ns": 1776267679813121300,
+  "result": {
+    "agent": "report_agent",
+    "request": "Generate report for mission audit_2025_001",
+    "structured_output": {
+      "cover_title": "Audit ITGC – Revue des contrôles généraux informatiques FY2025",
+      "cover_subtitle": "Version projet",
+      "client_name": "Direction des Systèmes d'Information – Groupe Maghreb Industries",
+      "report_period": "Octobre 2024 – Janvier 2025",
+      "report_date": "28/02/2025",
+      "confidentiality_notice": "Strictement privé et confidentiel",
+      "table_of_contents": [
+        "Préambule",
+        "Objectifs",
+        "Périmètre",
+        "Intervenants",
+        "Approche d’audit",
+        "Liste des contrôles",
+        "Synthèse contrôle × application",
+        "Synthèse générale",
+        "Synthèse des priorités",
+        "Points relevés",
+        "Recommandations"
+      ],
+      "preamble": "Le présent document restitue les principaux constats issus de notre revue des contrôles généraux informatiques conduite chez Direction des Systèmes d'Information – Groupe Maghreb Industries sur la période Octobre 2024 – Janvier 2025. Cette intervention s’inscrit dans le cadre d’une mission ITGC et a pour objectif d’apprécier le niveau de maîtrise du dispositif de contrôle interne informatique sur le périmètre retenu. Le présent support est confidentiel et destiné exclusivement aux parties prenantes de la mission.",
+      "objectives": [
+        "Apprécier le niveau de maîtrise des contrôles généraux informatiques sur le périmètre audité.",
+        "Évaluer la capacité du dispositif de contrôle interne IT à sécuriser la fiabilité, l’intégrité et la disponibilité des traitements.",
+        "Analyser les processus couverts par la mission, en particulier Gestion des accès, Gestion des changements, Exploitation informatique."
+      ],
+      "stakeholders": [
+        "Sarra Ben Ali (Senior Auditeur IT)",
+        "Mohamed Trabelsi (Manager IT Audit)",
+        "Yassine Chaabane (Responsable DSI)"
+      ],
+      "scope_summary": "Nos travaux ont porté sur les applications suivantes: SAP S/4HANA, Navision (BC), VLL, VLP. Le périmètre couvre principalement Gestion des accès, Gestion des changements, Exploitation informatique. Les diligences ont été réalisées au travers d’entretiens, d’analyses documentaires et de tests de contrôles ciblés.",
+      "applications": [
+        "SAP S/4HANA",
+        "Navision (BC)",
+        "VLL",
+        "VLP"
+      ],
+      "application_details": [
+        {
+          "name": "SAP S/4HANA",
+          "description": "ERP central – Finance, Achats, Ventes, RH",
+          "operating_system": "Red Hat Linux",
+          "database": "SAP HANA",
+          "provider": "Interne"
+        },
+        {
+          "name": "Navision (BC)",
+          "description": "Gestion commerciale et comptabilité filiales",
+          "operating_system": "Windows Server 2019",
+          "database": "SQL Server 2019",
+          "provider": "Héliaq Solutions"
+        },
+        {
+          "name": "VLL",
+          "description": "Application de gestion du programme de fidélité clients",
+          "operating_system": "Windows Server 2016",
+          "database": "SQL Server 2016",
+          "provider": "Interne"
+        },
+        {
+          "name": "VLP",
+          "description": "Application de caisse (points de vente)",
+          "operating_system": "Windows 10 IoT",
+          "database": "-",
+          "provider": "Interne"
+        }
+      ],
+      "covered_processes": [
+        "Gestion des accès",
+        "Exploitation informatique",
+        "Gestion des changements"
+      ],
+      "audit_approach": [
+        "Prise de connaissance de l’environnement informatique de l’entité et des évolutions significatives de l’exercice.",
+        "Entretiens avec les interlocuteurs clés, analyse documentaire et collecte des éléments probants nécessaires à la revue.",
+        "Exécution de tests de contrôles par sondage et observation sur les processus de gestion des accès, des changements et de l’exploitation informatique.",
+        "Synthèse des constats, évaluation du niveau de maîtrise et formalisation des recommandations à destination du management."
+      ],
+      "covered_controls": [
+        {
+          "reference": "APD-01",
+          "process": "APD",
+          "description": "Les accès des utilisateurs quittant l’entité (départ, mobilité) sont révoqués en temps opportun sur les applications et infrastructures du périmètre.",
+          "test_procedure": "Rapprocher les mouvements RH (départs) avec les comptes actifs et vérifier la désactivation effective, la traçabilité et la gestion des exceptions."
+        },
+        {
+          "reference": "APD-02",
+          "process": "APD",
+          "description": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "test_procedure": "Rapprocher les mouvements RH avec les comptes actifs et vérifier la désactivation effective, la traçabilité et le traitement des exceptions sur les différentes couches techniques."
+        },
+        {
+          "reference": "APD-03",
+          "process": "APD",
+          "description": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "test_procedure": "Identifier les comptes à privilèges élevés, génériques ou partagés, vérifier leur justification, la traçabilité individuelle des actions et la supervision régulière des activités."
+        },
+        {
+          "reference": "APD-04",
+          "process": "APD",
+          "description": "Les droits d’accès font l’objet d’une recertification périodique formelle, permettant de confirmer leur adéquation avec les fonctions exercées.",
+          "test_procedure": "Vérifier l’existence, la périodicité et la traçabilité des campagnes de recertification, ainsi que la remédiation des droits excessifs ou incompatibles."
+        },
+        {
+          "reference": "APD-05",
+          "process": "APD",
+          "description": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "test_procedure": "Comparer les paramètres de mots de passe et de verrouillage aux politiques de sécurité, et vérifier leur application sur les différentes couches techniques."
+        },
+        {
+          "reference": "APD-06",
+          "process": "APD",
+          "description": "Les paramètres de mots de passe et d’authentification sont conformes à la politique de sécurité (longueur, complexité, expiration, historique, verrouillage).",
+          "test_procedure": "Comparer la configuration réelle des politiques de mots de passe avec la charte/politique de sécurité et vérifier l’application à l’ensemble des comptes."
+        },
+        {
+          "reference": "APD-07",
+          "process": "APD",
+          "description": "Les créations et modifications d’accès font l’objet d’une validation formelle (hiérarchique et applicative) et sont tracées.",
+          "test_procedure": "Revoir un échantillon de demandes d’accès et vérifier l’existence d’une double validation, la complétude du dossier et la traçabilité."
+        },
+        {
+          "reference": "APD-08",
+          "process": "APD",
+          "description": "Les accès aux données sensibles (paie, RH, données personnelles) sont strictement restreints aux profils habilités et revus périodiquement.",
+          "test_procedure": "Identifier les données sensibles, vérifier les profils ayant accès, la justification fonctionnelle et la revue périodique des accès."
+        },
+        {
+          "reference": "APD-09",
+          "process": "APD",
+          "description": "Les accès accordés aux prestataires externes sont encadrés (justification, durée, révocation en fin de contrat) et font l’objet d’une revue périodique.",
+          "test_procedure": "Revoir la liste des comptes prestataires, vérifier la validité des contrats, la date de fin, la traçabilité des demandes et la révocation."
+        },
+        {
+          "reference": "CO-01",
+          "process": "CO",
+          "description": "Les sauvegardes sont réalisées selon une périodicité définie et des tests de restauration sont effectués et documentés.",
+          "test_procedure": "Vérifier la périodicité des sauvegardes, la supervision et la réalisation de tests de restauration avec preuves."
+        },
+        {
+          "reference": "CO-02",
+          "process": "CO",
+          "description": "Les incidents sont identifiés, tracés et résolus dans des délais appropriés, avec un pilotage basé sur des SLA et des indicateurs.",
+          "test_procedure": "Revoir les tickets d’incidents, les délais de résolution, les escalades et la consolidation des indicateurs de pilotage."
+        },
+        {
+          "reference": "CO-03",
+          "process": "CO",
+          "description": "Les prestations IT externalisées font l’objet d’un suivi (SLA/KPI, comités, revues) et d’une contractualisation des exigences de contrôle.",
+          "test_procedure": "Vérifier l’existence des SLA/KPI, comités de pilotage, comptes rendus et mécanismes de contrôle des prestataires."
+        },
+        {
+          "reference": "CO-04",
+          "process": "CO",
+          "description": "Les journaux (logs) sont conservés selon une durée conforme aux exigences légales et aux politiques internes, permettant les investigations.",
+          "test_procedure": "Vérifier les paramètres de rétention des logs et leur alignement avec la politique de conservation et les exigences réglementaires."
+        },
+        {
+          "reference": "CO-05",
+          "process": "CO",
+          "description": "Le plan de continuité / reprise (PCA/PRA) est à jour, testé périodiquement et aligné avec les versions applicatives et l’infrastructure.",
+          "test_procedure": "Revoir la documentation PRA, vérifier la date du dernier test, les résultats, et l’actualisation suite aux évolutions majeures."
+        },
+        {
+          "reference": "CO-06",
+          "process": "CO",
+          "description": "Les comptes de service et comptes techniques sont gérés de manière sécurisée (rotation des secrets, interdiction des mots de passe non expirables, coffre-fort).",
+          "test_procedure": "Identifier les comptes de service, vérifier les politiques d’expiration/rotation et les contrôles de stockage des secrets."
+        },
+        {
+          "reference": "CO-07",
+          "process": "CO",
+          "description": "Les procédures de restauration sont documentées, validées et testées (scénarios de perte partielle et totale), avec preuves de tests.",
+          "test_procedure": "Revoir la documentation de restauration et vérifier l’existence de tests récents (24 mois ou selon politique) et les résultats."
+        },
+        {
+          "reference": "CO-08",
+          "process": "CO",
+          "description": "Les correctifs de sécurité (patches) sont appliqués dans des délais conformes à la politique interne, avec priorisation selon criticité.",
+          "test_procedure": "Comparer la criticité des patches éditeur avec les dates d’application et vérifier le respect des délais (ex: 30 jours pour critiques)."
+        },
+        {
+          "reference": "CO-09",
+          "process": "CO",
+          "description": "La capacité (stockage, CPU, mémoire) est pilotée via un plan formalisé, des seuils d’alerte et des projections de croissance.",
+          "test_procedure": "Vérifier l’existence d’un capacity plan, les seuils, les alertes et les projections sur 12 mois, ainsi que le suivi des actions."
+        },
+        {
+          "reference": "PC-01",
+          "process": "PC",
+          "description": "Les changements en production sont approuvés formellement (CAB/validation), testés et documentés avant déploiement.",
+          "test_procedure": "Revoir un échantillon de changements, vérifier l’existence d’une demande, d’une approbation, d’une preuve de test et d’un plan de retour arrière."
+        },
+        {
+          "reference": "PC-02",
+          "process": "PC",
+          "description": "Les environnements de développement, test et production sont séparés et les accès cumulés sont encadrés (SoD, dérogations).",
+          "test_procedure": "Vérifier la séparation des environnements et analyser les profils ayant des accès cumulés, ainsi que les contrôles de dérogation."
+        },
+        {
+          "reference": "PC-03",
+          "process": "PC",
+          "description": "Les changements font l’objet de tests/recettes formalisés avant mise en production, avec validation des résultats.",
+          "test_procedure": "Revoir les PV de recette pour un échantillon de mises à jour et vérifier la validation interne préalable."
+        },
+        {
+          "reference": "PC-04",
+          "process": "PC",
+          "description": "Les transports et déploiements entre environnements sont tracés, autorisés et exécutés par des comptes habilités, reliés à une demande de changement.",
+          "test_procedure": "Rapprocher les journaux de transport/déploiement avec les demandes de changement et vérifier les approbations associées."
+        },
+        {
+          "reference": "PC-05",
+          "process": "PC",
+          "description": "Les dossiers de changement sont complets (analyse d’impact, plan de rollback, validations), conformément au template et à la politique interne.",
+          "test_procedure": "Revoir des dossiers de changement et vérifier la présence des pièces obligatoires et des validations."
+        },
+        {
+          "reference": "PC-06",
+          "process": "PC",
+          "description": "Les accès privilégiés en production (DBA, comptes d’administration) sont nominatifs, contrôlés (PAM) et journalisés, afin d’assurer la traçabilité.",
+          "test_procedure": "Identifier les comptes privilégiés partagés, vérifier la justification, la journalisation et les mécanismes de contrôle (coffre-fort, rotation)."
+        },
+        {
+          "reference": "PC-07",
+          "process": "PC",
+          "description": "Les changements d’urgence sont encadrés par une procédure dédiée (justification, tests, validation post-déploiement, REX).",
+          "test_procedure": "Analyser les changements d’urgence, vérifier la justification, les tests réalisés, le REX et la validation post-intervention."
+        }
+      ],
+      "control_matrix": [
+        {
+          "reference": "CO-01",
+          "process": "Exploitation informatique",
+          "control_description": "Les sauvegardes sont réalisées selon une périodicité définie et des tests de restauration sont effectués et documentés.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "CO-02",
+          "process": "Exploitation informatique",
+          "control_description": "Les incidents sont identifiés, tracés et résolus dans des délais appropriés, avec un pilotage basé sur des SLA et des indicateurs.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "CO-03",
+          "process": "Exploitation informatique",
+          "control_description": "Les prestations IT externalisées font l’objet d’un suivi (SLA/KPI, comités, revues) et d’une contractualisation des exigences de contrôle.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Non satisfaisant (Élevée)",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "CO-04",
+          "process": "Exploitation informatique",
+          "control_description": "Les journaux (logs) sont conservés selon une durée conforme aux exigences légales et aux politiques internes, permettant les investigations.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "CO-05",
+          "process": "Exploitation informatique",
+          "control_description": "Le plan de continuité / reprise (PCA/PRA) est à jour, testé périodiquement et aligné avec les versions applicatives et l’infrastructure.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "CO-06",
+          "process": "Exploitation informatique",
+          "control_description": "Les comptes de service et comptes techniques sont gérés de manière sécurisée (rotation des secrets, interdiction des mots de passe non expirables, coffre-fort).",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "CO-07",
+          "process": "Exploitation informatique",
+          "control_description": "Les procédures de restauration sont documentées, validées et testées (scénarios de perte partielle et totale), avec preuves de tests.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "CO-08",
+          "process": "Exploitation informatique",
+          "control_description": "Les correctifs de sécurité (patches) sont appliqués dans des délais conformes à la politique interne, avec priorisation selon criticité.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "CO-09",
+          "process": "Exploitation informatique",
+          "control_description": "La capacité (stockage, CPU, mémoire) est pilotée via un plan formalisé, des seuils d’alerte et des projections de croissance.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "APD-01",
+          "process": "Gestion des accès",
+          "control_description": "Les accès des utilisateurs quittant l’entité (départ, mobilité) sont révoqués en temps opportun sur les applications et infrastructures du périmètre.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "APD-02",
+          "process": "Gestion des accès",
+          "control_description": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "APD-03",
+          "process": "Gestion des accès",
+          "control_description": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "APD-04",
+          "process": "Gestion des accès",
+          "control_description": "Les droits d’accès font l’objet d’une recertification périodique formelle, permettant de confirmer leur adéquation avec les fonctions exercées.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Non satisfaisant (Élevée)",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "APD-05",
+          "process": "Gestion des accès",
+          "control_description": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "APD-06",
+          "process": "Gestion des accès",
+          "control_description": "Les paramètres de mots de passe et d’authentification sont conformes à la politique de sécurité (longueur, complexité, expiration, historique, verrouillage).",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "APD-07",
+          "process": "Gestion des accès",
+          "control_description": "Les créations et modifications d’accès font l’objet d’une validation formelle (hiérarchique et applicative) et sont tracées.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "APD-08",
+          "process": "Gestion des accès",
+          "control_description": "Les accès aux données sensibles (paie, RH, données personnelles) sont strictement restreints aux profils habilités et revus périodiquement.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "APD-09",
+          "process": "Gestion des accès",
+          "control_description": "Les accès accordés aux prestataires externes sont encadrés (justification, durée, révocation en fin de contrat) et font l’objet d’une revue périodique.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "PC-01",
+          "process": "Gestion des changements",
+          "control_description": "Les changements en production sont approuvés formellement (CAB/validation), testés et documentés avant déploiement.",
+          "application_statuses": {
+            "SAP S/4HANA": "Non satisfaisant (Élevée)",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "PC-02",
+          "process": "Gestion des changements",
+          "control_description": "Les environnements de développement, test et production sont séparés et les accès cumulés sont encadrés (SoD, dérogations).",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Non satisfaisant (Élevée)",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": "High"
+        },
+        {
+          "reference": "PC-03",
+          "process": "Gestion des changements",
+          "control_description": "Les changements font l’objet de tests/recettes formalisés avant mise en production, avec validation des résultats.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "PC-04",
+          "process": "Gestion des changements",
+          "control_description": "Les transports et déploiements entre environnements sont tracés, autorisés et exécutés par des comptes habilités, reliés à une demande de changement.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "PC-05",
+          "process": "Gestion des changements",
+          "control_description": "Les dossiers de changement sont complets (analyse d’impact, plan de rollback, validations), conformément au template et à la politique interne.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "PC-06",
+          "process": "Gestion des changements",
+          "control_description": "Les accès privilégiés en production (DBA, comptes d’administration) sont nominatifs, contrôlés (PAM) et journalisés, afin d’assurer la traçabilité.",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        },
+        {
+          "reference": "PC-07",
+          "process": "Gestion des changements",
+          "control_description": "Les changements d’urgence sont encadrés par une procédure dédiée (justification, tests, validation post-déploiement, REX).",
+          "application_statuses": {
+            "SAP S/4HANA": "Satisfaisant",
+            "Navision (BC)": "Satisfaisant",
+            "VLL": "Satisfaisant",
+            "VLP": "Satisfaisant"
+          },
+          "overall_priority": null
+        }
+      ],
+      "key_figures": [
+        {
+          "label": "Applications auditees",
+          "value": "4",
+          "commentary": "SAP S/4HANA, Navision (BC), VLL, VLP"
+        },
+        {
+          "label": "Observations relevees",
+          "value": "14",
+          "commentary": "Constats valides issus de la feuille Observations"
+        },
+        {
+          "label": "Processus couverts",
+          "value": "3",
+          "commentary": "Gestion des accès, Gestion des changements, Exploitation informatique"
+        },
+        {
+          "label": "Priorite dominante",
+          "value": "Élevée",
+          "commentary": "14 observation(s)"
+        }
+      ],
+      "executive_highlights": [
+        "Sur SAP S/4HANA, nous avons identifie comptes actifs post-départ, avec pour principal enjeu maintien d'accès pour des employés ayant quitté l'organisation. et une priorite élevée.",
+        "Sur SAP S/4HANA, nous avons identifie comptes actifs post-départ, avec pour principal enjeu accès non autorisé sur des données sensibles. et une priorite élevée.",
+        "Sur SAP S/4HANA, nous avons identifie comptes privilégiés non révoqués après départ, avec pour principal enjeu pertes de données ou violations de conformité possibles. et une priorite élevée."
+      ],
+      "strengths": [
+        "Le perimetre de mission et les processus cibles sont clairement identifies dans la feuille Mission.",
+        "Des procedures compensatoires existent sur plusieurs constats, ce qui traduit une prise en compte partielle des risques.",
+        "Les interlocuteurs cles de la mission sont identifies, facilitant la gouvernance des plans d'action."
+      ],
+      "watch_points": [
+        "APD-02 - Comptes actifs post-départ: Suite à notre examen de l'extraction des utilisateurs actifs dans SAP au 15/12/2024 croisée avec la liste des départs transmise par la DRH pour la période octobre 2023 – décembre 2024, nous avons identifié 7 comptes utilisateurs SAP toujours actifs appartenant à des collaborateurs ayant quitté l'entreprise. Parmi ces comptes, 2 ont effectué des connexions après leur date de départ officielle (le 03/11/2024 et le 18/11/2024). Impact potentiel: Maintien d'accès pour des employés ayant quitté l'organisation.",
+        "APD-02 - Comptes actifs post-départ: Suite à l'extraction des utilisateurs actifs dans SAP HANA Studio à la date du 20/12/2024, nous avons identifié 3 comptes de base de données (utilisateurs HANA) actifs correspondant à d'anciens collaborateurs. Ces comptes disposent de droits étendus (rôle MONITORING et SELECT sur plusieurs schémas critiques) et n'ont pas été désactivés après le départ de leurs titulaires. Impact potentiel: Accès non autorisé sur des données sensibles.",
+        "APD-02 - Comptes privilégiés non révoqués après départ: L'examen des comptes disposant du rôle SYSTEM ou DATA ADMIN dans SAP HANA a révélé la présence de 4 comptes DBA actifs dont 1 compte appartenant à un prestataire externe n'intervenant plus depuis septembre 2024. Aucune procédure de supervision périodique des activités réalisées par ces comptes n'existe. Les logs d'audit HANA sont configurés mais ne font pas l'objet d'une analyse régulière. Impact potentiel: Pertes de données ou violations de conformité possibles.",
+        "APD-02 - Comptes actifs post-départ: Notre examen des comptes utilisateurs sur les serveurs Red Hat Linux hébergeant SAP a révélé l'existence de 4 comptes de système d'exploitation appartenant à des anciens collaborateurs (dont 1 consultant externe) toujours actifs à la date de notre test (20/12/2024). Aucune procédure formelle de désactivation des comptes OS lors du départ des utilisateurs n'a pu être présentée. Impact potentiel: Accès non autorisé sur les serveurs en raison de comptes actifs non désactivés."
+      ],
+      "maturity_level": "faible a moderee",
+      "maturity_assessment": "Le dispositif de controle interne IT presente un niveau de maturite global faible a moderee. Les principales faiblesses se concentrent sur la gestion des accès, opérations informatiques et la gestion des changements.",
+      "priority_insight": "Le risque est principalement concentre sur les observations de priorite élevée, qui representent 14 point(s) sur 14. Le principal foyer de risque du perimetre audite concerne gestion des accès avec 9 observation(s).",
+      "strategic_priorities": [
+        "Remédier en priorité aux faiblesses critiques/élevées (ex: APD-02 - SAP S/4HANA).",
+        "Sécuriser les contrôles d’accès (APD-02)."
+      ],
+      "transversal_initiatives": [
+        "Renforcer le processus de gestion des habilitations (IAM), notamment la validation des accès, la recertification périodique, ainsi que la gestion des comptes inactifs et privilégiés. Exemples: APD-02 (SAP S/4HANA), APD-02 (SAP S/4HANA)."
+      ],
+      "process_summaries": [
+        {
+          "process_code": "APD",
+          "process_name": "Gestion des accès",
+          "observation_count": 9,
+          "applications": [
+            "SAP S/4HANA",
+            "Navision (BC)"
+          ],
+          "strengths": [
+            "Le processus est formellement present dans le perimetre de mission et couvert par le catalogue de controles."
+          ],
+          "watch_points": [
+            "Comptes actifs post-départ",
+            "Comptes actifs post-départ",
+            "Comptes privilégiés non révoqués après départ"
+          ]
+        },
+        {
+          "process_code": "CO",
+          "process_name": "Exploitation informatique",
+          "observation_count": 3,
+          "applications": [
+            "SAP S/4HANA",
+            "Navision (BC)"
+          ],
+          "strengths": [
+            "Le processus est formellement present dans le perimetre de mission et couvert par le catalogue de controles."
+          ],
+          "watch_points": [
+            "PRA non testé et documentation à actualiser",
+            "Processus de gestion des incidents non formalisé",
+            "Rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions"
+          ]
+        },
+        {
+          "process_code": "PC",
+          "process_name": "Gestion des changements",
+          "observation_count": 2,
+          "applications": [
+            "SAP S/4HANA",
+            "Navision (BC)"
+          ],
+          "strengths": [
+            "Le processus est formellement present dans le perimetre de mission et couvert par le catalogue de controles."
+          ],
+          "watch_points": [
+            "Changements mis en production sans tests formels documentés",
+            "Séparation formelle des environnements de développement et production – Navision"
+          ]
+        }
+      ],
+      "general_synthesis": "Au total, 14 observation(s) ont ete identifiees, dont 0 critique(s), 14 élevée(s), 0 moyenne(s) et 0 faible(s). Le niveau de maturité global du dispositif est estime faible a moderee. Les principaux foyers de risque concernent la gestion des accès, opérations informatiques et la gestion des changements. Les principales faiblesses identifiees concernent accès: APD-02 (comptes actifs post-départ), APD-02 (comptes actifs post-départ); changements: PC-01 (changements mis en production sans tests formels documentés), PC-02 (séparation formelle des environnements de développement et production – navision); exploitation: CO-01 (pra non testé et documentation à actualiser), CO-02 (processus de gestion des incidents non formalisé). Des actions correctives sont attendues a court terme sur les points de priorité critique/élevée.",
+      "priority_summary": [
+        {
+          "priority": "High",
+          "count": 14,
+          "percentage": 100.0
+        }
+      ],
+      "detailed_findings": [
+        {
+          "observation_id": "OBS-001",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / DRH",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Suite à notre examen de l'extraction des utilisateurs actifs dans SAP au 15/12/2024 croisée avec la liste des départs transmise par la DRH\n pour la période octobre 2023 – décembre 2024, nous avons identifié 7 comptes utilisateurs SAP toujours actifs appartenant à des collaborateurs ayant quitté l'entreprise. Parmi ces comptes, 2 ont effectué des connexions après leur date de départ officielle (le 03/11/2024 et le 18/11/2024).",
+          "compensating_procedure": "Les responsables ont indiqué que ces comptes avaient été conservés temporairement pour des raisons de passation de poste. Aucune connexion n'a été tracée après la confirmation de départ définitif pour 5 des 7 comptes. Un processus de revue manuelle mensuelle existe mais n'est pas systématiquement appliqué.",
+          "risk_impact": "Maintien d'accès pour des employés ayant quitté l'organisation.",
+          "impact_detail": "Exposition à des risques de fraude ou de fuite de données suite à des connexions post-départ.",
+          "root_cause": "Absence de suivi rigoureux lors de la révocation des accès pour les employés sortants.",
+          "recommendation": "Formaliser et automatiser le processus de révocation des accès suite aux départs.",
+          "recommendation_objective": "Réduire le risque d'accès non autorisés post-départ.",
+          "recommendation_steps": [
+            "Établir un processus systématique de désactivation des comptes utilisateurs basé sur les mouvements RH.",
+            "Mettre en place des revues périodiques des comptes actifs pour s'assurer qu'aucun compte inactif n'est maintenu."
+          ],
+          "priority": "High",
+          "priority_justification": "La présence de 2 connexions post-départ sur 7 comptes utilisateurs actifs identifiés représente un risque significatif d'accès non autorisé, exposant l'organisation à des fraudes potentielles.",
+          "auditor_comment": "Constaté lors de l'extraction des comptes SAP du 15/12/2024. Concerne la DSI et la DRH. 2 connexions post-départ confirmées.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Suite à notre examen de l'extraction des utilisateurs actifs dans SAP au 15/12/2024 croisée avec la liste des départs transmise par la DRH pour la période octobre 2023 – décembre 2024, nous avons identifié 7 comptes utilisateurs SAP toujours actifs appartenant à des collaborateurs ayant quitté l'entreprise. Parmi ces comptes, 2 ont effectué des connexions après leur date de départ officielle (le 03/11/2024 et le 18/11/2024). Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque de maintien d'accès pour des employés ayant quitté l'organisation pouvant entrainer exposition à des risques de fraude ou de fuite de données suite à des connexions post-départ. La cause racine probable identifiee est: Absence de suivi rigoureux lors de la révocation des accès pour les employés sortants. Justification: La présence de 2 connexions post-départ sur 7 comptes utilisateurs actifs identifiés représente un risque significatif d'accès non autorisé, exposant l'organisation à des fraudes potentielles.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-003",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "Base de données",
+          "owners": "Yassine Chaabane (DSI) / Administrateur HANA",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Suite à l'extraction des utilisateurs actifs dans SAP HANA Studio à la date du 20/12/2024, nous avons identifié 3 comptes de base de données (utilisateurs HANA) actifs correspondant à d'anciens collaborateurs. Ces comptes disposent de droits étendus (rôle MONITORING et SELECT sur plusieurs schémas critiques) et n'ont pas été désactivés après le départ de leurs titulaires.",
+          "compensating_procedure": "Aucune procédure compensatoire identifiée. La DSI n'a pas pu présenter de processus de revue périodique des comptes HANA.",
+          "risk_impact": "Accès non autorisé sur des données sensibles.",
+          "impact_detail": "Exposition aux risques d'accès non autorisés sur des données sensibles.",
+          "root_cause": "Absence de désactivation des comptes HANA après le départ des titulaires.",
+          "recommendation": "Implémenter un processus de désactivation des comptes HANA suite aux départs des utilisateurs.",
+          "recommendation_objective": "Protéger les données sensibles contre les accès non autorisés.",
+          "recommendation_steps": [
+            "Créer une procédure de révocation des accès HANA en coordination avec les mouvements de personnel.",
+            "Réviser régulièrement les comptes HANA pour s'assurer qu'aucun accès non autorisé n'est maintenu."
+          ],
+          "priority": "High",
+          "priority_justification": "La présence de 3 comptes HANA actifs avec des droits étendus après le départ de leurs titulaires expose potentiellement les données sensibles à des accès non autorisés.",
+          "auditor_comment": "Test réalisé via SAP HANA Studio. Droits des comptes identifiés : rôles MONITORING et SELECT sur les schémas FI et MM.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Suite à l'extraction des utilisateurs actifs dans SAP HANA Studio à la date du 20/12/2024, nous avons identifié 3 comptes de base de données (utilisateurs HANA) actifs correspondant à d'anciens collaborateurs. Ces comptes disposent de droits étendus (rôle MONITORING et SELECT sur plusieurs schémas critiques) et n'ont pas été désactivés après le départ de leurs titulaires. Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque d'accès non autorisé sur des données sensibles pouvant entrainer exposition aux risques d'accès non autorisés sur des données sensibles. La cause racine probable identifiee est: Absence de désactivation des comptes HANA après le départ des titulaires. Justification: La présence de 3 comptes HANA actifs avec des droits étendus après le départ de leurs titulaires expose potentiellement les données sensibles à des accès non autorisés.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-006",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Comptes à droits étendus et génériques",
+          "application": "SAP S/4HANA",
+          "layer": "Base de données",
+          "owners": "Yassine Chaabane (DSI) / Administrateur HANA",
+          "title": "Comptes privilégiés non révoqués après départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "L'examen des comptes disposant du rôle SYSTEM ou DATA ADMIN dans SAP HANA a révélé la présence de 4 comptes DBA actifs dont 1 compte appartenant à un prestataire externe n'intervenant plus depuis septembre 2024. Aucune procédure de supervision périodique des activités réalisées par ces comptes n'existe. Les logs d'audit HANA sont configurés mais ne font pas l'objet d'une analyse régulière.",
+          "compensating_procedure": "La DSI indique que les accès HANA sont limités aux administrateurs de confiance. Aucun contrôle formel de second niveau n'est cependant en place.",
+          "risk_impact": "Pertes de données ou violations de conformité possibles.",
+          "impact_detail": "Accès non contrôlé aux bases sensibles pouvant mener à des violations de sécurité.",
+          "root_cause": "Absence de supervision périodique des comptes DBA dans SAP HANA.",
+          "recommendation": "Établir une revue périodique des activités des comptes DBA et analyser les accès.",
+          "recommendation_objective": "Assurer le contrôle des accès et la conformité des activités réalisées par les DBA.",
+          "recommendation_steps": [
+            "Mettre en place un processus de révision régulière des comptes DBA avec vérification de leur activité.",
+            "Configurer une journalisation des accès et produire des rapports d'analyse des activités."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de procédure de supervision pour les 4 comptes DBA actifs, dont 1 appartient à un prestataire externe non révoqué, expose l'organisation à des risques sérieux de pertes de données.",
+          "auditor_comment": "Test réalisé via SAP HANA Studio. Rôle SYSTEM identifié sur 4 comptes. 1 compte prestataire non révoqué.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: L'examen des comptes disposant du rôle SYSTEM ou DATA ADMIN dans SAP HANA a révélé la présence de 4 comptes DBA actifs dont 1 compte appartenant à un prestataire externe n'intervenant plus depuis septembre 2024. Aucune procédure de supervision périodique des activités réalisées par ces comptes n'existe. Les logs d'audit HANA sont configurés mais ne font pas l'objet d'une analyse régulière. Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque de pertes de données ou violations de conformité possibles pouvant entrainer accès non contrôlé aux bases sensibles pouvant mener à des violations de sécurité. La cause racine probable identifiee est: Absence de supervision périodique des comptes DBA dans SAP HANA. Justification: L'absence de procédure de supervision pour les 4 comptes DBA actifs, dont 1 appartient à un prestataire externe non révoqué, expose l'organisation à des risques sérieux de pertes de données.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-002",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Notre examen des comptes utilisateurs sur les serveurs Red Hat Linux \nhébergeant SAP a révélé l'existence de 4 comptes de système d'exploitation\n appartenant à des anciens collaborateurs (dont 1 consultant externe)\n toujours actifs à la date de notre test (20/12/2024). \nAucune procédure formelle de désactivation des comptes OS lors du départ des utilisateurs \nn'a pu être présentée.",
+          "compensating_procedure": "Aucune procédure compensatoire formelle identifiée. La DSI indique procéder à des revues ponctuelles mais non documentées.",
+          "risk_impact": "Accès non autorisé sur les serveurs en raison de comptes actifs non désactivés.",
+          "impact_detail": "Risque élevé d'accès non autorisé pouvant mener à des manipulations malveillantes.",
+          "root_cause": "Absence de procédure formelle de désactivation des comptes OS lors du départ des utilisateurs.",
+          "recommendation": "Mettre en place une procédure formelle pour la désactivation des comptes OS lors du départ des utilisateurs.",
+          "recommendation_objective": "Éliminer les accès non autorisés liés aux départs.",
+          "recommendation_steps": [
+            "Documenter et formaliser le processus de désactivation des comptes OS liés aux mouvements RH.",
+            "Effectuer des revues de comptes actifs sur les serveurs Linux pour vérifier la conformité."
+          ],
+          "priority": "High",
+          "priority_justification": "L'identification de 4 comptes OS actifs appartenant à d'anciens collaborateurs sur des serveurs critiques, sans procédure formelle de désactivation, augmente considérablement le risque d'accès non autorisé.",
+          "auditor_comment": "Test réalisé par connexion SSH sur les serveurs de production SAP. Comptes confirmés actifs via la commande \"passwd -S\".",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen des comptes utilisateurs sur les serveurs Red Hat Linux hébergeant SAP a révélé l'existence de 4 comptes de système d'exploitation appartenant à des anciens collaborateurs (dont 1 consultant externe) toujours actifs à la date de notre test (20/12/2024). Aucune procédure formelle de désactivation des comptes OS lors du départ des utilisateurs n'a pu être présentée. Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque d'accès non autorisé sur les serveurs en raison de comptes actifs non désactivés pouvant entrainer risque élevé d'accès non autorisé pouvant mener à des manipulations malveillantes. La cause racine probable identifiee est: Absence de procédure formelle de désactivation des comptes OS lors du départ des utilisateurs. Justification: L'identification de 4 comptes OS actifs appartenant à d'anciens collaborateurs sur des serveurs critiques, sans procédure formelle de désactivation, augmente considérablement le risque d'accès non autorisé.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-004",
+          "reference": "APD-03",
+          "domain": "Gestion des accès",
+          "category": "Comptes à droits étendus et génériques",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Supervision des comptes génériques et administrateurs SAP",
+          "expected_control": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "finding": "Notre revue des comptes SAP disposant de droits étendus a mis en évidence l'existence de 5 comptes génériques actifs (ex. : BATCH_FI, ADMIN_MM, TEST_SD) disposant de profils SAP_ALL ou de rôles cumulant des transactions sensibles (FB60, F110, ME21N). Aucune procédure documentée de supervision périodique des transactions réalisées via ces comptes n'a pu être présentée. Par ailleurs, aucun log d'activité de ces comptes n'est extrait et analysé de manière régulière.",
+          "compensating_procedure": "La DSI indique que ces comptes sont utilisés uniquement pour les traitements batch automatiques. Cependant, aucune restriction technique ne limite leur utilisation à des connexions automatiques uniquement.",
+          "risk_impact": "Utilisation non supervisée de comptes privilégiés.",
+          "impact_detail": "Augmentation du risque de fraudes et d'accès non autorisés.",
+          "root_cause": "Absence de supervision périodique des transactions réalisées via des comptes génériques.",
+          "recommendation": "Mettre en place une supervision périodique et documentée des comptes à droits étendus.",
+          "recommendation_objective": "Réduire le risque d'utilisation abusive des comptes privilégiés.",
+          "recommendation_steps": [
+            "Établir une procédure de supervision des comptes génériques avec suivi régulier des activités.",
+            "Configurer une journalisation des opérations effectuées par ces comptes pour analyse future."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de supervision des 5 comptes génériques disposant de droits étendus augmente le risque de fraudes et d'accès non autorisés, mettant en danger l'intégrité des transactions.",
+          "auditor_comment": "Constaté via l'extraction SU01 des comptes SAP. Comptes identifiés : BATCH_FI, ADMIN_MM, TEST_SD, RFC_USER, SUPPORTBASIS.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue des comptes SAP disposant de droits étendus a mis en évidence l'existence de 5 comptes génériques actifs (ex.: BATCH_FI, ADMIN_MM, TEST_SD) disposant de profils SAP_ALL ou de rôles cumulant des transactions sensibles (FB60, F110, ME21N). Aucune procédure documentée de supervision périodique des transactions réalisées via ces comptes n'a pu être présentée. Par ailleurs, aucun log d'activité de ces comptes n'est extrait et analysé de manière régulière. Cette situation traduit une faiblesse du contrôle APD-03 et expose l'organisation a un risque de utilisation non supervisée de comptes privilégiés pouvant entrainer augmentation du risque de fraudes et d'accès non autorisés. La cause racine probable identifiee est: Absence de supervision périodique des transactions réalisées via des comptes génériques. Justification: L'absence de supervision des 5 comptes génériques disposant de droits étendus augmente le risque de fraudes et d'accès non autorisés, mettant en danger l'intégrité des transactions.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-005",
+          "reference": "APD-03",
+          "domain": "Gestion des accès",
+          "category": "Comptes à droits étendus et génériques",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI) / Administrateur Système",
+          "title": "Compte root partagé sans traçabilité individuelle",
+          "expected_control": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "finding": "Notre examen des serveurs Red Hat Linux hébergeant SAP a révélé que le compte root est partagé entre plusieurs administrateurs sans traçabilité individuelle des actions réalisées. Aucun mécanisme de type sudo avec journalisation n'est en place. De plus, les mots de passe des comptes root n'ont pas été modifiés depuis plus de 12 mois selon les informations fournies par la DSI.",
+          "compensating_procedure": "La DSI indique qu'un accès physique aux datacenters est requis et constitue un contrôle compensatoire. Toutefois, aucune procédure documentée ne formalise ce contrôle.",
+          "risk_impact": "Difficulté à tracer les actions, augmentant le risque d'abus.",
+          "impact_detail": "Augmentation du risque d'altération des systèmes.",
+          "root_cause": "Partage du compte root entre plusieurs administrateurs sans traçabilité.",
+          "recommendation": "Établir des comptes individuels pour les administrateurs avec traçabilité des actions.",
+          "recommendation_objective": "Assurer la responsabilité individuelle et la traçabilité des actions effectuées.",
+          "recommendation_steps": [
+            "Mettre en place des comptes nominatifs pour chaque administrateur au lieu de comptes partagés.",
+            "Implémenter une politique de journalisation pour toutes les actions des comptes administrateurs."
+          ],
+          "priority": "High",
+          "priority_justification": "La gestion du compte root partagé sur les serveurs Linux, sans traçabilité des actions, pose un risque élevé de compromission et de manipulation malveillante.",
+          "auditor_comment": "Constaté lors de l'entretien avec l'administrateur système et confirmé par inspection de /etc/sudoers.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen des serveurs Red Hat Linux hébergeant SAP a révélé que le compte root est partagé entre plusieurs administrateurs sans traçabilité individuelle des actions réalisées. Aucun mécanisme de type sudo avec journalisation n'est en place. De plus, les mots de passe des comptes root n'ont pas été modifiés depuis plus de 12 mois selon les informations fournies par la DSI. Cette situation traduit une faiblesse du contrôle APD-03 et expose l'organisation a un risque de difficulté à tracer les actions, augmentant le risque d'abus pouvant entrainer augmentation du risque d'altération des systèmes. La cause racine probable identifiee est: Partage du compte root entre plusieurs administrateurs sans traçabilité. Justification: La gestion du compte root partagé sur les serveurs Linux, sans traçabilité des actions, pose un risque élevé de compromission et de manipulation malveillante.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-007",
+          "reference": "APD-04",
+          "domain": "Gestion des accès",
+          "category": "Recertification des droits d'accès",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Directions métiers",
+          "title": "Recertification des droits d'accès non réalisée",
+          "expected_control": "Les droits d’accès font l’objet d’une recertification périodique formelle, permettant de confirmer leur adéquation avec les fonctions exercées.",
+          "finding": "Notre revue du processus de gestion des accès à l'application Navision (Business Central) a révélé l'absence de toute campagne formelle de recertification des droits d'accès sur l'exercice 2024. Aucune procédure documentée décrivant la périodicité, les responsables et la démarche de recertification n'a pu être présentée. Par ailleurs, 18 utilisateurs identifiés lors de notre test disposent de profils cumulant des fonctions incompatibles (ex. : création fournisseur + validation paiement).",
+          "compensating_procedure": "Aucune procédure compensatoire formelle. Les responsables métier indiquent effectuer des contrôles informels lors des clôtures mensuelles mais sans documentation.",
+          "risk_impact": "Augmentation du risque de fraude et d'erreurs.",
+          "impact_detail": "Droits excessifs pouvant mener à des actions non conformes.",
+          "root_cause": "Absence de campagne formelle de recertification des droits d'accès.",
+          "recommendation": "Mettre en œuvre une campagne formelle et périodique de recertification des droits d'accès.",
+          "recommendation_objective": "Confirmer l'adéquation des droits d'accès avec les responsabilités des utilisateurs.",
+          "recommendation_steps": [
+            "Établir une procédure de recertification documentée des droits d'accès.",
+            "Effectuer des validations régulières pour corriger les droits excessifs ou incompatibles."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de recertification formelle des droits d'accès sur Navision, constatée sur 18 utilisateurs avec des fonctions incompatibles, augmente le risque de fraudes et d'erreurs.",
+          "auditor_comment": "Constaté via l'extraction des utilisateurs Navision du 10/01/2025. 18 cas de cumul de fonctions incompatibles identifiés.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue du processus de gestion des accès à l'application Navision (Business Central) a révélé l'absence de toute campagne formelle de recertification des droits d'accès sur l'exercice 2024. Aucune procédure documentée décrivant la périodicité, les responsables et la démarche de recertification n'a pu être présentée. Par ailleurs, 18 utilisateurs identifiés lors de notre test disposent de profils cumulant des fonctions incompatibles (ex.: création fournisseur + validation paiement). Cette situation traduit une faiblesse du contrôle APD-04 et expose l'organisation a un risque de augmentation du risque de fraude et d'erreurs pouvant entrainer droits excessifs pouvant mener à des actions non conformes. La cause racine probable identifiee est: Absence de campagne formelle de recertification des droits d'accès. Justification: L'absence de recertification formelle des droits d'accès sur Navision, constatée sur 18 utilisateurs avec des fonctions incompatibles, augmente le risque de fraudes et d'erreurs.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-008",
+          "reference": "APD-05",
+          "domain": "Gestion des accès",
+          "category": "Politique de sécurité des mots de passe",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Politique de mots de passe non conforme",
+          "expected_control": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "finding": "Notre revue du paramétrage de la politique de mots de passe dans SAP (transaction RZ11 et table USR40) a révélé les non-conformités suivantes : longueur minimale configurée à 6 caractères (bonne pratique : 10+), absence d'exigence de caractères spéciaux, historique de mots de passe configuré à 3 (bonne pratique : 12+), et absence de blocage automatique après 5 tentatives infructueuses pour 3 profils de connexion identifiés.",
+          "compensating_procedure": "La DSI indique que les utilisateurs sont sensibilisés à la sécurité des mots de passe lors des formations d'onboarding. Aucun contrôle technique compensatoire formalisé.",
+          "risk_impact": "Augmentation du risque d'accès non autorisé.",
+          "impact_detail": "Exposure aux compromissions de comptes et violations de sécurité.",
+          "root_cause": "Politique de mots de passe non conforme aux bonnes pratiques.",
+          "recommendation": "Aligner la politique de mots de passe sur les bonnes pratiques du secteur.",
+          "recommendation_objective": "Réduire le risque d'accès non autorisé via des mots de passe faibles.",
+          "recommendation_steps": [
+            "Réviser et modifier la politique de mots de passe pour inclure des exigences de longueur, complexité et historique.",
+            "Implémenter une surveillance efficace pour s'assurer que les nouvelles configurations sont appliquées."
+          ],
+          "priority": "High",
+          "priority_justification": "Les configurations de mots de passe non conformes dans SAP, avec une longueur minimale de 6 caractères et sans complexité requise, augmentent significativement le risque d'accès non autorisé.",
+          "auditor_comment": "Paramétrage extrait via transaction RZ11. Non-conformités confirmées sur les profils login/password_compliance_group, login/fails_to_session_end.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue du paramétrage de la politique de mots de passe dans SAP (transaction RZ11 et table USR40) a révélé les non-conformités suivantes: longueur minimale configurée à 6 caractères (bonne pratique: 10+), absence d'exigence de caractères spéciaux, historique de mots de passe configuré à 3 (bonne pratique: 12+), et absence de blocage automatique après 5 tentatives infructueuses pour 3 profils de connexion identifiés. Cette situation traduit une faiblesse du contrôle APD-05 et expose l'organisation a un risque de augmentation du risque d'accès non autorisé pouvant entrainer exposure aux compromissions de comptes et violations de sécurité. La cause racine probable identifiee est: Politique de mots de passe non conforme aux bonnes pratiques. Justification: Les configurations de mots de passe non conformes dans SAP, avec une longueur minimale de 6 caractères et sans complexité requise, augmentent significativement le risque d'accès non autorisé.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-009",
+          "reference": "APD-05",
+          "domain": "Gestion des accès",
+          "category": "Politique de sécurité des mots de passe",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI) / Administrateur Système",
+          "title": "Politique de mots de passe non conforme",
+          "expected_control": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "finding": "Notre examen du fichier /etc/pam.d/system-auth et des paramètres /etc/login.defs des serveurs Red Hat Linux hébergeant SAP a révélé les configurations insuffisantes suivantes : longueur minimale de mot de passe fixée à 8 caractères sans complexité requise, absence de blocage de compte après tentatives infructueuses (pam_faillock non activé), et durée de validité des mots de passe illimitée (PASS_MAX_DAYS = 99999).",
+          "compensating_procedure": "La DSI indique que l'accès physique aux serveurs est restreint. Ce contrôle ne constitue pas une mesure compensatoire suffisante pour les risques de sécurité logique.",
+          "risk_impact": "Compromission potentielle de comptes et accès non autorisés.",
+          "impact_detail": "Risque élevé de sécurité sur les serveurs Linux hébergeant SAP.",
+          "root_cause": "Configurations insuffisantes des mots de passe sur les serveurs Linux.",
+          "recommendation": "Mettre en conformité les paramètres de mots de passe sur les serveurs Linux avec les bonnes pratiques.",
+          "recommendation_objective": "Assurer la sécurité des comptes en appliquant des standards de mots de passe appropriés.",
+          "recommendation_steps": [
+            "Modifier les fichiers de configuration pour renforcer les politiques de mots de passe.",
+            "Mettre en place un mécanisme de vérification régulière de la conformité des configurations."
+          ],
+          "priority": "High",
+          "priority_justification": "La configuration des mots de passe sur les serveurs Linux, avec une longueur minimale de 8 caractères et absence de blocage de compte, expose à des risques de compromission importants.",
+          "auditor_comment": "Vérification réalisée par examen des fichiers de configuration PAM et login.defs lors de la visite technique du 12/12/2024.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen du fichier /etc/pam.d/system-auth et des paramètres /etc/login.defs des serveurs Red Hat Linux hébergeant SAP a révélé les configurations insuffisantes suivantes: longueur minimale de mot de passe fixée à 8 caractères sans complexité requise, absence de blocage de compte après tentatives infructueuses (pam_faillock non activé), et durée de validité des mots de passe illimitée (PASS_MAX_DAYS = 99999). Cette situation traduit une faiblesse du contrôle APD-05 et expose l'organisation a un risque de compromission potentielle de comptes et accès non autorisés pouvant entrainer risque élevé de sécurité sur les serveurs linux hébergeant sap. La cause racine probable identifiee est: Configurations insuffisantes des mots de passe sur les serveurs Linux. Justification: La configuration des mots de passe sur les serveurs Linux, avec une longueur minimale de 8 caractères et absence de blocage de compte, expose à des risques de compromission importants.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-012",
+          "reference": "CO-01",
+          "domain": "Opérations informatiques",
+          "category": "Sauvegardes et plan de reprise",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "PRA non testé et documentation à actualiser",
+          "expected_control": "Les sauvegardes sont réalisées selon une périodicité définie et des tests de restauration sont effectués et documentés.",
+          "finding": "Notre revue de la politique de sauvegarde SAP a permis de confirmer que les sauvegardes journalières sont bien réalisées conformément à la politique en place. Cependant, aucun test de restauration n'a été réalisé et documenté au cours de l'exercice 2024. Le Plan de Reprise Informatique (PRI) existe sous forme de document mais n'a fait l'objet d'aucun test depuis sa dernière mise à jour en 2022. La procédure de restauration des bases HANA en cas de sinistre n'est pas documentée.",
+          "compensating_procedure": "La DSI indique que des tests informels de restauration de fichiers isolés sont réalisés ponctuellement. Ces tests ne couvrent pas un scénario de reprise complète du système.",
+          "risk_impact": "Incapacité à restaurer des informations essentielles en cas d'incident.",
+          "impact_detail": "Perte de données et indisponibilité prolongée.",
+          "root_cause": "Absence de tests de restauration documentés des sauvegardes SAP.",
+          "recommendation": "Planifier et documenter des tests de restauration réguliers des sauvegardes SAP.",
+          "recommendation_objective": "Assurer la capacité de restauration des données critiques en cas d'incident.",
+          "recommendation_steps": [
+            "Établir un calendrier pour des tests de restauration documentés et vérifier les résultats.",
+            "Mettre à jour le Plan de Reprise Informatique avec des procédures de restauration claires."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de tests documentés de restauration des sauvegardes SAP et de mise à jour du Plan de Reprise Informatique entraîne un risque important d'incapacité à restaurer des données en cas d'incident.",
+          "auditor_comment": "Politique de sauvegarde obtenue et vérifiée. PRI daté de 2022 obtenu. Absence confirmée de documentation de tests de restauration sur 2024.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue de la politique de sauvegarde SAP a permis de confirmer que les sauvegardes journalières sont bien réalisées conformément à la politique en place. Cependant, aucun test de restauration n'a été réalisé et documenté au cours de l'exercice 2024. Le Plan de Reprise Informatique (PRI) existe sous forme de document mais n'a fait l'objet d'aucun test depuis sa dernière mise à jour en 2022. La procédure de restauration des bases HANA en cas de sinistre n'est pas documentée. Cette situation traduit une faiblesse du contrôle CO-01 et expose l'organisation a un risque de incapacité à restaurer des informations essentielles en cas d'incident pouvant entrainer perte de données et indisponibilité prolongée. La cause racine probable identifiee est: Absence de tests de restauration documentés des sauvegardes SAP. Justification: L'absence de tests documentés de restauration des sauvegardes SAP et de mise à jour du Plan de Reprise Informatique entraîne un risque important d'incapacité à restaurer des données en cas d'incident.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-013",
+          "reference": "CO-02",
+          "domain": "Opérations informatiques",
+          "category": "Gestion des incidents de production",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Processus de gestion des incidents non formalisé",
+          "expected_control": "Les incidents sont identifiés, tracés et résolus dans des délais appropriés, avec un pilotage basé sur des SLA et des indicateurs.",
+          "finding": "Notre revue du processus de gestion des incidents informatiques a révélé l'absence d'une procédure formelle documentée décrivant les étapes de détection, qualification, escalade et résolution des incidents. Les incidents sont actuellement tracés dans un tableau Excel partagé sans workflow de validation ni indicateurs de performance (délai de résolution, SLA). Pour les 3 incidents critiques survenus en 2024 (arrêt production SAP de 4h le 14/03/2024, corruption de données VLL le 22/07/2024, et panne réseau de 6h le 09/10/2024), aucune analyse de cause racine documentée n'a pu être présentée.",
+          "compensating_procedure": "La DSI indique que les incidents sont gérés en temps réel par l'équipe technique avec des communications par email et WhatsApp. Ce mode de gestion ne garantit pas la traçabilité et la capitalisation des incidents.",
+          "risk_impact": "Perturbation des opérations dues à un traitement inapproprié des incidents.",
+          "impact_detail": "Indisponibilité, non-respect des engagements de service et pertes financières.",
+          "root_cause": "Processus de gestion des incidents non formalisé et outil de ticketing insuffisant.",
+          "recommendation": "Formaliser le processus de gestion des incidents avec un outil de ticketing efficace.",
+          "recommendation_objective": "Assurer une gestion appropriée des incidents avec un suivi rigoureux.",
+          "recommendation_steps": [
+            "Développer une procédure formelle pour la gestion des incidents incluant des SLA.",
+            "Mettre en place un système de ticketing adapté avec reporting et analyse des performances."
+          ],
+          "priority": "High",
+          "priority_justification": "Le processus de gestion des incidents non formalisé, avec 3 incidents critiques en 2024 sans analyse de cause racine, expose l'organisation à des perturbations sérieuses dans les opérations.",
+          "auditor_comment": "Processus documenté non obtenu. Tableau Excel de suivi obtenu mais incomplet. 3 incidents critiques 2024 sans analyse de cause racine.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue du processus de gestion des incidents informatiques a révélé l'absence d'une procédure formelle documentée décrivant les étapes de détection, qualification, escalade et résolution des incidents. Les incidents sont actuellement tracés dans un tableau Excel partagé sans workflow de validation ni indicateurs de performance (délai de résolution, SLA). Pour les 3 incidents critiques survenus en 2024 (arrêt production SAP de 4h le 14/03/2024, corruption de données VLL le 22/07/2024, et panne réseau de 6h le 09/10/2024), aucune analyse de cause racine documentée n'a pu être présentée. Cette situation traduit une faiblesse du contrôle CO-02 et expose l'organisation a un risque de perturbation des opérations dues à un traitement inapproprié des incidents pouvant entrainer indisponibilité, non-respect des engagements de service et pertes financières. La cause racine probable identifiee est: Processus de gestion des incidents non formalisé et outil de ticketing insuffisant. Justification: Le processus de gestion des incidents non formalisé, avec 3 incidents critiques en 2024 sans analyse de cause racine, expose l'organisation à des perturbations sérieuses dans les opérations.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-014",
+          "reference": "CO-03",
+          "domain": "Opérations informatiques",
+          "category": "Supervision des prestations externalisées",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Direction Générale",
+          "title": "Rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions",
+          "expected_control": "Les prestations IT externalisées font l’objet d’un suivi (SLA/KPI, comités, revues) et d’une contractualisation des exigences de contrôle.",
+          "finding": "Notre revue du dispositif de supervision des prestations informatiques externalisées a révélé l'absence de rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions, qui héberge, maintient et exploite les applications Navision et VLL. Aucun contrat de niveau de service (SLA) formalisé et signé n'a pu être présenté pour 2024. Par ailleurs, aucun contrôle de second niveau n'est réalisé par l'entité pour s'assurer de l'efficacité des contrôles mis en place par le prestataire sur les processus externalisés.",
+          "compensating_procedure": "Héliaq Solutions indique être en cours de préparation d'une certification ISO 27001. Aucun calendrier précis n'a pu être communiqué. Les échanges avec le prestataire se font via des réunions mensuelles informelles sans compte-rendu formalisé.",
+          "risk_impact": "Perte de contrôle sur les services externalisés et leurs efficacités.",
+          "impact_detail": "Dépendance fournisseur et dérive des niveaux de service.",
+          "root_cause": "Absence de rapport ISAE 3402 Type 2 et d'un SLA formalisé pour le prestataire Héliaq Solutions.",
+          "recommendation": "Formaliser le pilotage des prestations externalisées avec des SLA et des mécanismes de contrôle appropriés.",
+          "recommendation_objective": "Assurer le suivi et la conformité des services externalisés.",
+          "recommendation_steps": [
+            "Rédiger et formaliser des SLA pour les prestations externalisées avec des indicateurs de performance.",
+            "Planifier des réunions de suivi documentées et revues des performances des prestataires."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de rapport ISAE 3402 et d'un SLA formalisé pour le prestataire Héliaq Solutions entraîne un manque de contrôle sur les services externalisés, augmentant la dépendance au fournisseur.",
+          "auditor_comment": "Contrat de service 2024 obtenu mais sans SLA formalisé. Absence confirmée de rapport ISAE 3402 ou équivalent pour Héliaq Solutions.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue du dispositif de supervision des prestations informatiques externalisées a révélé l'absence de rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions, qui héberge, maintient et exploite les applications Navision et VLL. Aucun contrat de niveau de service (SLA) formalisé et signé n'a pu être présenté pour 2024. Par ailleurs, aucun contrôle de second niveau n'est réalisé par l'entité pour s'assurer de l'efficacité des contrôles mis en place par le prestataire sur les processus externalisés. Cette situation traduit une faiblesse du contrôle CO-03 et expose l'organisation a un risque de perte de contrôle sur les services externalisés et leurs efficacités pouvant entrainer dépendance fournisseur et dérive des niveaux de service. La cause racine probable identifiee est: Absence de rapport ISAE 3402 Type 2 et d'un SLA formalisé pour le prestataire Héliaq Solutions. Justification: L'absence de rapport ISAE 3402 et d'un SLA formalisé pour le prestataire Héliaq Solutions entraîne un manque de contrôle sur les services externalisés, augmentant la dépendance au fournisseur.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-010",
+          "reference": "PC-01",
+          "domain": "Gestion des changements",
+          "category": "Tests et validation avant mise en production",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Responsables fonctionnels",
+          "title": "Changements mis en production sans tests formels documentés",
+          "expected_control": "Les changements en production sont approuvés formellement (CAB/validation), testés et documentés avant déploiement.",
+          "finding": "Notre examen de l'échantillon de 25 ordres de transport (OT) SAP passés en production entre janvier et décembre 2024 a révélé que 8 d'entre eux (32%) ne disposent d'aucune documentation de test préalable à la mise en production (absence de plan de test, de résultats de test ou de validation fonctionnelle signée). Parmi ces 8 OT, 3 concernent des programmes ABAP modifiant des flux financiers critiques (valorisation des stocks, calcul des provisions).",
+          "compensating_procedure": "La DSI indique que les changements urgents sont validés oralement par le responsable fonctionnel. Aucune procédure formelle de gestion des changements d'urgence n'existe.",
+          "risk_impact": "Changements non contrôlés, incidents en production et altération de l’intégrité des traitements.",
+          "impact_detail": "Incidents en production pouvant affecter les opérations et la conformité.",
+          "root_cause": "Absence de documentation formelle pour les tests avant mise en production.",
+          "recommendation": "Imposer une validation formelle et une preuve de test avant toute mise en production.",
+          "recommendation_objective": "Assurer l'intégrité et la fiabilité des changements déployés.",
+          "recommendation_steps": [
+            "Documenter tous les tests réalisés avant mise en production et s'assurer de la validation par une autorité compétente.",
+            "Établir un processus formel de gestion des changements d'urgence avec approbations documentées."
+          ],
+          "priority": "High",
+          "priority_justification": "Le fait que 32% des ordres de transport en production ne disposent d'aucune documentation de test préalable représente un risque élevé d'incidents pouvant affecter les opérations.",
+          "auditor_comment": "Tests réalisés sur un échantillon de 25 OT tirés aléatoirement sur la liste des 312 OT passés en production en 2024. 8 OT sans documentation de test (32%).",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen de l'échantillon de 25 ordres de transport (OT) SAP passés en production entre janvier et décembre 2024 a révélé que 8 d'entre eux (32%) ne disposent d'aucune documentation de test préalable à la mise en production (absence de plan de test, de résultats de test ou de validation fonctionnelle signée). Parmi ces 8 OT, 3 concernent des programmes ABAP modifiant des flux financiers critiques (valorisation des stocks, calcul des provisions). Cette situation traduit une faiblesse du contrôle PC-01 et expose l'organisation a un risque de changements non contrôlés, incidents en production et altération de l’intégrité des traitements pouvant entrainer incidents en production pouvant affecter les opérations et la conformité. La cause racine probable identifiee est: Absence de documentation formelle pour les tests avant mise en production. Justification: Le fait que 32% des ordres de transport en production ne disposent d'aucune documentation de test préalable représente un risque élevé d'incidents pouvant affecter les opérations.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-011",
+          "reference": "PC-02",
+          "domain": "Gestion des changements",
+          "category": "Séparation des environnements",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Héliaq Solutions / Yassine Chaabane (DSI)",
+          "title": "Séparation formelle des environnements de développement et production – Navision",
+          "expected_control": "Les environnements de développement, test et production sont séparés et les accès cumulés sont encadrés (SoD, dérogations).",
+          "finding": "Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production. Les modifications applicatives sont testées directement en production sur une société fictive hébergée dans la même instance. Cette configuration ne garantit pas une séparation adéquate des tâches et expose l'environnement de production à des modifications non validées.",
+          "compensating_procedure": "Le prestataire Héliaq Solutions indique que les modifications sont validées par l'utilisateur clé avant application. Aucune validation documentée n'a pu être produite pour 6 des 9 changements testés.",
+          "risk_impact": "Modification non autorisée en production.",
+          "impact_detail": "Risque accru d'erreurs et d'incidents en production.",
+          "root_cause": "Absence de séparation formelle des environnements de développement et de production.",
+          "recommendation": "Créer des environnements distincts pour le développement et la production, avec des contrôles appropriés.",
+          "recommendation_objective": "Réduire les risques liés aux modifications non validées en production.",
+          "recommendation_steps": [
+            "Mettre en place des environnements de test séparés et documenter les éventuelles dérogations.",
+            "Renforcer les contrôles d'accès et les validations avant mise en production."
+          ],
+          "priority": "High",
+          "priority_justification": "La priorite élevée est justifiee par l'absence explicite de contrôle ou de preuve, telle que decrite dans le constat: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production.",
+          "auditor_comment": "Constaté lors de l'entretien avec le prestataire Héliaq Solutions et confirmé par inspection de la configuration Navision. 6/9 changements sans validation documentée.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production. Les modifications applicatives sont testées directement en production sur une société fictive hébergée dans la même instance. Cette configuration ne garantit pas une séparation adéquate des tâches et expose l'environnement de production à des modifications non validées. Cette situation traduit une faiblesse du contrôle PC-02 et expose l'organisation a un risque de modification non autorisée en production pouvant entrainer risque accru d'erreurs et d'incidents en production. La cause racine probable identifiee est: Absence de séparation formelle des environnements de développement et de production. Justification: La priorite élevée est justifiee par l'absence explicite de contrôle ou de preuve, telle que decrite dans le constat: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        }
+      ],
+      "detailed_recommendations": [
+        {
+          "observation_id": "OBS-001",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / DRH",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Suite à notre examen de l'extraction des utilisateurs actifs dans SAP au 15/12/2024 croisée avec la liste des départs transmise par la DRH\n pour la période octobre 2023 – décembre 2024, nous avons identifié 7 comptes utilisateurs SAP toujours actifs appartenant à des collaborateurs ayant quitté l'entreprise. Parmi ces comptes, 2 ont effectué des connexions après leur date de départ officielle (le 03/11/2024 et le 18/11/2024).",
+          "compensating_procedure": "Les responsables ont indiqué que ces comptes avaient été conservés temporairement pour des raisons de passation de poste. Aucune connexion n'a été tracée après la confirmation de départ définitif pour 5 des 7 comptes. Un processus de revue manuelle mensuelle existe mais n'est pas systématiquement appliqué.",
+          "risk_impact": "Maintien d'accès pour des employés ayant quitté l'organisation.",
+          "impact_detail": "Exposition à des risques de fraude ou de fuite de données suite à des connexions post-départ.",
+          "root_cause": "Absence de suivi rigoureux lors de la révocation des accès pour les employés sortants.",
+          "recommendation": "Formaliser et automatiser le processus de révocation des accès suite aux départs.",
+          "recommendation_objective": "Réduire le risque d'accès non autorisés post-départ.",
+          "recommendation_steps": [
+            "Établir un processus systématique de désactivation des comptes utilisateurs basé sur les mouvements RH.",
+            "Mettre en place des revues périodiques des comptes actifs pour s'assurer qu'aucun compte inactif n'est maintenu."
+          ],
+          "priority": "High",
+          "priority_justification": "La présence de 2 connexions post-départ sur 7 comptes utilisateurs actifs identifiés représente un risque significatif d'accès non autorisé, exposant l'organisation à des fraudes potentielles.",
+          "auditor_comment": "Constaté lors de l'extraction des comptes SAP du 15/12/2024. Concerne la DSI et la DRH. 2 connexions post-départ confirmées.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Suite à notre examen de l'extraction des utilisateurs actifs dans SAP au 15/12/2024 croisée avec la liste des départs transmise par la DRH pour la période octobre 2023 – décembre 2024, nous avons identifié 7 comptes utilisateurs SAP toujours actifs appartenant à des collaborateurs ayant quitté l'entreprise. Parmi ces comptes, 2 ont effectué des connexions après leur date de départ officielle (le 03/11/2024 et le 18/11/2024). Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque de maintien d'accès pour des employés ayant quitté l'organisation pouvant entrainer exposition à des risques de fraude ou de fuite de données suite à des connexions post-départ. La cause racine probable identifiee est: Absence de suivi rigoureux lors de la révocation des accès pour les employés sortants. Justification: La présence de 2 connexions post-départ sur 7 comptes utilisateurs actifs identifiés représente un risque significatif d'accès non autorisé, exposant l'organisation à des fraudes potentielles.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-003",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "Base de données",
+          "owners": "Yassine Chaabane (DSI) / Administrateur HANA",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Suite à l'extraction des utilisateurs actifs dans SAP HANA Studio à la date du 20/12/2024, nous avons identifié 3 comptes de base de données (utilisateurs HANA) actifs correspondant à d'anciens collaborateurs. Ces comptes disposent de droits étendus (rôle MONITORING et SELECT sur plusieurs schémas critiques) et n'ont pas été désactivés après le départ de leurs titulaires.",
+          "compensating_procedure": "Aucune procédure compensatoire identifiée. La DSI n'a pas pu présenter de processus de revue périodique des comptes HANA.",
+          "risk_impact": "Accès non autorisé sur des données sensibles.",
+          "impact_detail": "Exposition aux risques d'accès non autorisés sur des données sensibles.",
+          "root_cause": "Absence de désactivation des comptes HANA après le départ des titulaires.",
+          "recommendation": "Implémenter un processus de désactivation des comptes HANA suite aux départs des utilisateurs.",
+          "recommendation_objective": "Protéger les données sensibles contre les accès non autorisés.",
+          "recommendation_steps": [
+            "Créer une procédure de révocation des accès HANA en coordination avec les mouvements de personnel.",
+            "Réviser régulièrement les comptes HANA pour s'assurer qu'aucun accès non autorisé n'est maintenu."
+          ],
+          "priority": "High",
+          "priority_justification": "La présence de 3 comptes HANA actifs avec des droits étendus après le départ de leurs titulaires expose potentiellement les données sensibles à des accès non autorisés.",
+          "auditor_comment": "Test réalisé via SAP HANA Studio. Droits des comptes identifiés : rôles MONITORING et SELECT sur les schémas FI et MM.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Suite à l'extraction des utilisateurs actifs dans SAP HANA Studio à la date du 20/12/2024, nous avons identifié 3 comptes de base de données (utilisateurs HANA) actifs correspondant à d'anciens collaborateurs. Ces comptes disposent de droits étendus (rôle MONITORING et SELECT sur plusieurs schémas critiques) et n'ont pas été désactivés après le départ de leurs titulaires. Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque d'accès non autorisé sur des données sensibles pouvant entrainer exposition aux risques d'accès non autorisés sur des données sensibles. La cause racine probable identifiee est: Absence de désactivation des comptes HANA après le départ des titulaires. Justification: La présence de 3 comptes HANA actifs avec des droits étendus après le départ de leurs titulaires expose potentiellement les données sensibles à des accès non autorisés.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-002",
+          "reference": "APD-02",
+          "domain": "Gestion des accès",
+          "category": "Révocation des accès",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Comptes actifs post-départ",
+          "expected_control": "Les droits d’accès aux applications, systèmes d’exploitation et bases de données sont désactivés en temps opportun à la suite du départ ou de la mobilité d’un collaborateur.",
+          "finding": "Notre examen des comptes utilisateurs sur les serveurs Red Hat Linux \nhébergeant SAP a révélé l'existence de 4 comptes de système d'exploitation\n appartenant à des anciens collaborateurs (dont 1 consultant externe)\n toujours actifs à la date de notre test (20/12/2024). \nAucune procédure formelle de désactivation des comptes OS lors du départ des utilisateurs \nn'a pu être présentée.",
+          "compensating_procedure": "Aucune procédure compensatoire formelle identifiée. La DSI indique procéder à des revues ponctuelles mais non documentées.",
+          "risk_impact": "Accès non autorisé sur les serveurs en raison de comptes actifs non désactivés.",
+          "impact_detail": "Risque élevé d'accès non autorisé pouvant mener à des manipulations malveillantes.",
+          "root_cause": "Absence de procédure formelle de désactivation des comptes OS lors du départ des utilisateurs.",
+          "recommendation": "Mettre en place une procédure formelle pour la désactivation des comptes OS lors du départ des utilisateurs.",
+          "recommendation_objective": "Éliminer les accès non autorisés liés aux départs.",
+          "recommendation_steps": [
+            "Documenter et formaliser le processus de désactivation des comptes OS liés aux mouvements RH.",
+            "Effectuer des revues de comptes actifs sur les serveurs Linux pour vérifier la conformité."
+          ],
+          "priority": "High",
+          "priority_justification": "L'identification de 4 comptes OS actifs appartenant à d'anciens collaborateurs sur des serveurs critiques, sans procédure formelle de désactivation, augmente considérablement le risque d'accès non autorisé.",
+          "auditor_comment": "Test réalisé par connexion SSH sur les serveurs de production SAP. Comptes confirmés actifs via la commande \"passwd -S\".",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen des comptes utilisateurs sur les serveurs Red Hat Linux hébergeant SAP a révélé l'existence de 4 comptes de système d'exploitation appartenant à des anciens collaborateurs (dont 1 consultant externe) toujours actifs à la date de notre test (20/12/2024). Aucune procédure formelle de désactivation des comptes OS lors du départ des utilisateurs n'a pu être présentée. Cette situation traduit une faiblesse du contrôle APD-02 et expose l'organisation a un risque d'accès non autorisé sur les serveurs en raison de comptes actifs non désactivés pouvant entrainer risque élevé d'accès non autorisé pouvant mener à des manipulations malveillantes. La cause racine probable identifiee est: Absence de procédure formelle de désactivation des comptes OS lors du départ des utilisateurs. Justification: L'identification de 4 comptes OS actifs appartenant à d'anciens collaborateurs sur des serveurs critiques, sans procédure formelle de désactivation, augmente considérablement le risque d'accès non autorisé.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-004",
+          "reference": "APD-03",
+          "domain": "Gestion des accès",
+          "category": "Comptes à droits étendus et génériques",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Supervision des comptes génériques et administrateurs SAP",
+          "expected_control": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "finding": "Notre revue des comptes SAP disposant de droits étendus a mis en évidence l'existence de 5 comptes génériques actifs (ex. : BATCH_FI, ADMIN_MM, TEST_SD) disposant de profils SAP_ALL ou de rôles cumulant des transactions sensibles (FB60, F110, ME21N). Aucune procédure documentée de supervision périodique des transactions réalisées via ces comptes n'a pu être présentée. Par ailleurs, aucun log d'activité de ces comptes n'est extrait et analysé de manière régulière.",
+          "compensating_procedure": "La DSI indique que ces comptes sont utilisés uniquement pour les traitements batch automatiques. Cependant, aucune restriction technique ne limite leur utilisation à des connexions automatiques uniquement.",
+          "risk_impact": "Utilisation non supervisée de comptes privilégiés.",
+          "impact_detail": "Augmentation du risque de fraudes et d'accès non autorisés.",
+          "root_cause": "Absence de supervision périodique des transactions réalisées via des comptes génériques.",
+          "recommendation": "Mettre en place une supervision périodique et documentée des comptes à droits étendus.",
+          "recommendation_objective": "Réduire le risque d'utilisation abusive des comptes privilégiés.",
+          "recommendation_steps": [
+            "Établir une procédure de supervision des comptes génériques avec suivi régulier des activités.",
+            "Configurer une journalisation des opérations effectuées par ces comptes pour analyse future."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de supervision des 5 comptes génériques disposant de droits étendus augmente le risque de fraudes et d'accès non autorisés, mettant en danger l'intégrité des transactions.",
+          "auditor_comment": "Constaté via l'extraction SU01 des comptes SAP. Comptes identifiés : BATCH_FI, ADMIN_MM, TEST_SD, RFC_USER, SUPPORTBASIS.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue des comptes SAP disposant de droits étendus a mis en évidence l'existence de 5 comptes génériques actifs (ex.: BATCH_FI, ADMIN_MM, TEST_SD) disposant de profils SAP_ALL ou de rôles cumulant des transactions sensibles (FB60, F110, ME21N). Aucune procédure documentée de supervision périodique des transactions réalisées via ces comptes n'a pu être présentée. Par ailleurs, aucun log d'activité de ces comptes n'est extrait et analysé de manière régulière. Cette situation traduit une faiblesse du contrôle APD-03 et expose l'organisation a un risque de utilisation non supervisée de comptes privilégiés pouvant entrainer augmentation du risque de fraudes et d'accès non autorisés. La cause racine probable identifiee est: Absence de supervision périodique des transactions réalisées via des comptes génériques. Justification: L'absence de supervision des 5 comptes génériques disposant de droits étendus augmente le risque de fraudes et d'accès non autorisés, mettant en danger l'intégrité des transactions.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-005",
+          "reference": "APD-03",
+          "domain": "Gestion des accès",
+          "category": "Comptes à droits étendus et génériques",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI) / Administrateur Système",
+          "title": "Compte root partagé sans traçabilité individuelle",
+          "expected_control": "Les comptes à droits étendus, génériques, partagés ou techniques sont strictement limités, justifiés et font l’objet d’une supervision périodique des usages.",
+          "finding": "Notre examen des serveurs Red Hat Linux hébergeant SAP a révélé que le compte root est partagé entre plusieurs administrateurs sans traçabilité individuelle des actions réalisées. Aucun mécanisme de type sudo avec journalisation n'est en place. De plus, les mots de passe des comptes root n'ont pas été modifiés depuis plus de 12 mois selon les informations fournies par la DSI.",
+          "compensating_procedure": "La DSI indique qu'un accès physique aux datacenters est requis et constitue un contrôle compensatoire. Toutefois, aucune procédure documentée ne formalise ce contrôle.",
+          "risk_impact": "Difficulté à tracer les actions, augmentant le risque d'abus.",
+          "impact_detail": "Augmentation du risque d'altération des systèmes.",
+          "root_cause": "Partage du compte root entre plusieurs administrateurs sans traçabilité.",
+          "recommendation": "Établir des comptes individuels pour les administrateurs avec traçabilité des actions.",
+          "recommendation_objective": "Assurer la responsabilité individuelle et la traçabilité des actions effectuées.",
+          "recommendation_steps": [
+            "Mettre en place des comptes nominatifs pour chaque administrateur au lieu de comptes partagés.",
+            "Implémenter une politique de journalisation pour toutes les actions des comptes administrateurs."
+          ],
+          "priority": "High",
+          "priority_justification": "La gestion du compte root partagé sur les serveurs Linux, sans traçabilité des actions, pose un risque élevé de compromission et de manipulation malveillante.",
+          "auditor_comment": "Constaté lors de l'entretien avec l'administrateur système et confirmé par inspection de /etc/sudoers.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen des serveurs Red Hat Linux hébergeant SAP a révélé que le compte root est partagé entre plusieurs administrateurs sans traçabilité individuelle des actions réalisées. Aucun mécanisme de type sudo avec journalisation n'est en place. De plus, les mots de passe des comptes root n'ont pas été modifiés depuis plus de 12 mois selon les informations fournies par la DSI. Cette situation traduit une faiblesse du contrôle APD-03 et expose l'organisation a un risque de difficulté à tracer les actions, augmentant le risque d'abus pouvant entrainer augmentation du risque d'altération des systèmes. La cause racine probable identifiee est: Partage du compte root entre plusieurs administrateurs sans traçabilité. Justification: La gestion du compte root partagé sur les serveurs Linux, sans traçabilité des actions, pose un risque élevé de compromission et de manipulation malveillante.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-007",
+          "reference": "APD-04",
+          "domain": "Gestion des accès",
+          "category": "Recertification des droits d'accès",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Directions métiers",
+          "title": "Recertification des droits d'accès non réalisée",
+          "expected_control": "Les droits d’accès font l’objet d’une recertification périodique formelle, permettant de confirmer leur adéquation avec les fonctions exercées.",
+          "finding": "Notre revue du processus de gestion des accès à l'application Navision (Business Central) a révélé l'absence de toute campagne formelle de recertification des droits d'accès sur l'exercice 2024. Aucune procédure documentée décrivant la périodicité, les responsables et la démarche de recertification n'a pu être présentée. Par ailleurs, 18 utilisateurs identifiés lors de notre test disposent de profils cumulant des fonctions incompatibles (ex. : création fournisseur + validation paiement).",
+          "compensating_procedure": "Aucune procédure compensatoire formelle. Les responsables métier indiquent effectuer des contrôles informels lors des clôtures mensuelles mais sans documentation.",
+          "risk_impact": "Augmentation du risque de fraude et d'erreurs.",
+          "impact_detail": "Droits excessifs pouvant mener à des actions non conformes.",
+          "root_cause": "Absence de campagne formelle de recertification des droits d'accès.",
+          "recommendation": "Mettre en œuvre une campagne formelle et périodique de recertification des droits d'accès.",
+          "recommendation_objective": "Confirmer l'adéquation des droits d'accès avec les responsabilités des utilisateurs.",
+          "recommendation_steps": [
+            "Établir une procédure de recertification documentée des droits d'accès.",
+            "Effectuer des validations régulières pour corriger les droits excessifs ou incompatibles."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de recertification formelle des droits d'accès sur Navision, constatée sur 18 utilisateurs avec des fonctions incompatibles, augmente le risque de fraudes et d'erreurs.",
+          "auditor_comment": "Constaté via l'extraction des utilisateurs Navision du 10/01/2025. 18 cas de cumul de fonctions incompatibles identifiés.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue du processus de gestion des accès à l'application Navision (Business Central) a révélé l'absence de toute campagne formelle de recertification des droits d'accès sur l'exercice 2024. Aucune procédure documentée décrivant la périodicité, les responsables et la démarche de recertification n'a pu être présentée. Par ailleurs, 18 utilisateurs identifiés lors de notre test disposent de profils cumulant des fonctions incompatibles (ex.: création fournisseur + validation paiement). Cette situation traduit une faiblesse du contrôle APD-04 et expose l'organisation a un risque de augmentation du risque de fraude et d'erreurs pouvant entrainer droits excessifs pouvant mener à des actions non conformes. La cause racine probable identifiee est: Absence de campagne formelle de recertification des droits d'accès. Justification: L'absence de recertification formelle des droits d'accès sur Navision, constatée sur 18 utilisateurs avec des fonctions incompatibles, augmente le risque de fraudes et d'erreurs.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-008",
+          "reference": "APD-05",
+          "domain": "Gestion des accès",
+          "category": "Politique de sécurité des mots de passe",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Politique de mots de passe non conforme",
+          "expected_control": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "finding": "Notre revue du paramétrage de la politique de mots de passe dans SAP (transaction RZ11 et table USR40) a révélé les non-conformités suivantes : longueur minimale configurée à 6 caractères (bonne pratique : 10+), absence d'exigence de caractères spéciaux, historique de mots de passe configuré à 3 (bonne pratique : 12+), et absence de blocage automatique après 5 tentatives infructueuses pour 3 profils de connexion identifiés.",
+          "compensating_procedure": "La DSI indique que les utilisateurs sont sensibilisés à la sécurité des mots de passe lors des formations d'onboarding. Aucun contrôle technique compensatoire formalisé.",
+          "risk_impact": "Augmentation du risque d'accès non autorisé.",
+          "impact_detail": "Exposure aux compromissions de comptes et violations de sécurité.",
+          "root_cause": "Politique de mots de passe non conforme aux bonnes pratiques.",
+          "recommendation": "Aligner la politique de mots de passe sur les bonnes pratiques du secteur.",
+          "recommendation_objective": "Réduire le risque d'accès non autorisé via des mots de passe faibles.",
+          "recommendation_steps": [
+            "Réviser et modifier la politique de mots de passe pour inclure des exigences de longueur, complexité et historique.",
+            "Implémenter une surveillance efficace pour s'assurer que les nouvelles configurations sont appliquées."
+          ],
+          "priority": "High",
+          "priority_justification": "Les configurations de mots de passe non conformes dans SAP, avec une longueur minimale de 6 caractères et sans complexité requise, augmentent significativement le risque d'accès non autorisé.",
+          "auditor_comment": "Paramétrage extrait via transaction RZ11. Non-conformités confirmées sur les profils login/password_compliance_group, login/fails_to_session_end.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue du paramétrage de la politique de mots de passe dans SAP (transaction RZ11 et table USR40) a révélé les non-conformités suivantes: longueur minimale configurée à 6 caractères (bonne pratique: 10+), absence d'exigence de caractères spéciaux, historique de mots de passe configuré à 3 (bonne pratique: 12+), et absence de blocage automatique après 5 tentatives infructueuses pour 3 profils de connexion identifiés. Cette situation traduit une faiblesse du contrôle APD-05 et expose l'organisation a un risque de augmentation du risque d'accès non autorisé pouvant entrainer exposure aux compromissions de comptes et violations de sécurité. La cause racine probable identifiee est: Politique de mots de passe non conforme aux bonnes pratiques. Justification: Les configurations de mots de passe non conformes dans SAP, avec une longueur minimale de 6 caractères et sans complexité requise, augmentent significativement le risque d'accès non autorisé.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-009",
+          "reference": "APD-05",
+          "domain": "Gestion des accès",
+          "category": "Politique de sécurité des mots de passe",
+          "application": "SAP S/4HANA",
+          "layer": "OS",
+          "owners": "Yassine Chaabane (DSI) / Administrateur Système",
+          "title": "Politique de mots de passe non conforme",
+          "expected_control": "La politique de sécurité des mots de passe et des mécanismes d’authentification est conforme aux bonnes pratiques et appliquée de manière homogène.",
+          "finding": "Notre examen du fichier /etc/pam.d/system-auth et des paramètres /etc/login.defs des serveurs Red Hat Linux hébergeant SAP a révélé les configurations insuffisantes suivantes : longueur minimale de mot de passe fixée à 8 caractères sans complexité requise, absence de blocage de compte après tentatives infructueuses (pam_faillock non activé), et durée de validité des mots de passe illimitée (PASS_MAX_DAYS = 99999).",
+          "compensating_procedure": "La DSI indique que l'accès physique aux serveurs est restreint. Ce contrôle ne constitue pas une mesure compensatoire suffisante pour les risques de sécurité logique.",
+          "risk_impact": "Compromission potentielle de comptes et accès non autorisés.",
+          "impact_detail": "Risque élevé de sécurité sur les serveurs Linux hébergeant SAP.",
+          "root_cause": "Configurations insuffisantes des mots de passe sur les serveurs Linux.",
+          "recommendation": "Mettre en conformité les paramètres de mots de passe sur les serveurs Linux avec les bonnes pratiques.",
+          "recommendation_objective": "Assurer la sécurité des comptes en appliquant des standards de mots de passe appropriés.",
+          "recommendation_steps": [
+            "Modifier les fichiers de configuration pour renforcer les politiques de mots de passe.",
+            "Mettre en place un mécanisme de vérification régulière de la conformité des configurations."
+          ],
+          "priority": "High",
+          "priority_justification": "La configuration des mots de passe sur les serveurs Linux, avec une longueur minimale de 8 caractères et absence de blocage de compte, expose à des risques de compromission importants.",
+          "auditor_comment": "Vérification réalisée par examen des fichiers de configuration PAM et login.defs lors de la visite technique du 12/12/2024.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen du fichier /etc/pam.d/system-auth et des paramètres /etc/login.defs des serveurs Red Hat Linux hébergeant SAP a révélé les configurations insuffisantes suivantes: longueur minimale de mot de passe fixée à 8 caractères sans complexité requise, absence de blocage de compte après tentatives infructueuses (pam_faillock non activé), et durée de validité des mots de passe illimitée (PASS_MAX_DAYS = 99999). Cette situation traduit une faiblesse du contrôle APD-05 et expose l'organisation a un risque de compromission potentielle de comptes et accès non autorisés pouvant entrainer risque élevé de sécurité sur les serveurs linux hébergeant sap. La cause racine probable identifiee est: Configurations insuffisantes des mots de passe sur les serveurs Linux. Justification: La configuration des mots de passe sur les serveurs Linux, avec une longueur minimale de 8 caractères et absence de blocage de compte, expose à des risques de compromission importants.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-012",
+          "reference": "CO-01",
+          "domain": "Opérations informatiques",
+          "category": "Sauvegardes et plan de reprise",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "PRA non testé et documentation à actualiser",
+          "expected_control": "Les sauvegardes sont réalisées selon une périodicité définie et des tests de restauration sont effectués et documentés.",
+          "finding": "Notre revue de la politique de sauvegarde SAP a permis de confirmer que les sauvegardes journalières sont bien réalisées conformément à la politique en place. Cependant, aucun test de restauration n'a été réalisé et documenté au cours de l'exercice 2024. Le Plan de Reprise Informatique (PRI) existe sous forme de document mais n'a fait l'objet d'aucun test depuis sa dernière mise à jour en 2022. La procédure de restauration des bases HANA en cas de sinistre n'est pas documentée.",
+          "compensating_procedure": "La DSI indique que des tests informels de restauration de fichiers isolés sont réalisés ponctuellement. Ces tests ne couvrent pas un scénario de reprise complète du système.",
+          "risk_impact": "Incapacité à restaurer des informations essentielles en cas d'incident.",
+          "impact_detail": "Perte de données et indisponibilité prolongée.",
+          "root_cause": "Absence de tests de restauration documentés des sauvegardes SAP.",
+          "recommendation": "Planifier et documenter des tests de restauration réguliers des sauvegardes SAP.",
+          "recommendation_objective": "Assurer la capacité de restauration des données critiques en cas d'incident.",
+          "recommendation_steps": [
+            "Établir un calendrier pour des tests de restauration documentés et vérifier les résultats.",
+            "Mettre à jour le Plan de Reprise Informatique avec des procédures de restauration claires."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de tests documentés de restauration des sauvegardes SAP et de mise à jour du Plan de Reprise Informatique entraîne un risque important d'incapacité à restaurer des données en cas d'incident.",
+          "auditor_comment": "Politique de sauvegarde obtenue et vérifiée. PRI daté de 2022 obtenu. Absence confirmée de documentation de tests de restauration sur 2024.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue de la politique de sauvegarde SAP a permis de confirmer que les sauvegardes journalières sont bien réalisées conformément à la politique en place. Cependant, aucun test de restauration n'a été réalisé et documenté au cours de l'exercice 2024. Le Plan de Reprise Informatique (PRI) existe sous forme de document mais n'a fait l'objet d'aucun test depuis sa dernière mise à jour en 2022. La procédure de restauration des bases HANA en cas de sinistre n'est pas documentée. Cette situation traduit une faiblesse du contrôle CO-01 et expose l'organisation a un risque de incapacité à restaurer des informations essentielles en cas d'incident pouvant entrainer perte de données et indisponibilité prolongée. La cause racine probable identifiee est: Absence de tests de restauration documentés des sauvegardes SAP. Justification: L'absence de tests documentés de restauration des sauvegardes SAP et de mise à jour du Plan de Reprise Informatique entraîne un risque important d'incapacité à restaurer des données en cas d'incident.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-013",
+          "reference": "CO-02",
+          "domain": "Opérations informatiques",
+          "category": "Gestion des incidents de production",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI)",
+          "title": "Processus de gestion des incidents non formalisé",
+          "expected_control": "Les incidents sont identifiés, tracés et résolus dans des délais appropriés, avec un pilotage basé sur des SLA et des indicateurs.",
+          "finding": "Notre revue du processus de gestion des incidents informatiques a révélé l'absence d'une procédure formelle documentée décrivant les étapes de détection, qualification, escalade et résolution des incidents. Les incidents sont actuellement tracés dans un tableau Excel partagé sans workflow de validation ni indicateurs de performance (délai de résolution, SLA). Pour les 3 incidents critiques survenus en 2024 (arrêt production SAP de 4h le 14/03/2024, corruption de données VLL le 22/07/2024, et panne réseau de 6h le 09/10/2024), aucune analyse de cause racine documentée n'a pu être présentée.",
+          "compensating_procedure": "La DSI indique que les incidents sont gérés en temps réel par l'équipe technique avec des communications par email et WhatsApp. Ce mode de gestion ne garantit pas la traçabilité et la capitalisation des incidents.",
+          "risk_impact": "Perturbation des opérations dues à un traitement inapproprié des incidents.",
+          "impact_detail": "Indisponibilité, non-respect des engagements de service et pertes financières.",
+          "root_cause": "Processus de gestion des incidents non formalisé et outil de ticketing insuffisant.",
+          "recommendation": "Formaliser le processus de gestion des incidents avec un outil de ticketing efficace.",
+          "recommendation_objective": "Assurer une gestion appropriée des incidents avec un suivi rigoureux.",
+          "recommendation_steps": [
+            "Développer une procédure formelle pour la gestion des incidents incluant des SLA.",
+            "Mettre en place un système de ticketing adapté avec reporting et analyse des performances."
+          ],
+          "priority": "High",
+          "priority_justification": "Le processus de gestion des incidents non formalisé, avec 3 incidents critiques en 2024 sans analyse de cause racine, expose l'organisation à des perturbations sérieuses dans les opérations.",
+          "auditor_comment": "Processus documenté non obtenu. Tableau Excel de suivi obtenu mais incomplet. 3 incidents critiques 2024 sans analyse de cause racine.",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre revue du processus de gestion des incidents informatiques a révélé l'absence d'une procédure formelle documentée décrivant les étapes de détection, qualification, escalade et résolution des incidents. Les incidents sont actuellement tracés dans un tableau Excel partagé sans workflow de validation ni indicateurs de performance (délai de résolution, SLA). Pour les 3 incidents critiques survenus en 2024 (arrêt production SAP de 4h le 14/03/2024, corruption de données VLL le 22/07/2024, et panne réseau de 6h le 09/10/2024), aucune analyse de cause racine documentée n'a pu être présentée. Cette situation traduit une faiblesse du contrôle CO-02 et expose l'organisation a un risque de perturbation des opérations dues à un traitement inapproprié des incidents pouvant entrainer indisponibilité, non-respect des engagements de service et pertes financières. La cause racine probable identifiee est: Processus de gestion des incidents non formalisé et outil de ticketing insuffisant. Justification: Le processus de gestion des incidents non formalisé, avec 3 incidents critiques en 2024 sans analyse de cause racine, expose l'organisation à des perturbations sérieuses dans les opérations.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-014",
+          "reference": "CO-03",
+          "domain": "Opérations informatiques",
+          "category": "Supervision des prestations externalisées",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Direction Générale",
+          "title": "Rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions",
+          "expected_control": "Les prestations IT externalisées font l’objet d’un suivi (SLA/KPI, comités, revues) et d’une contractualisation des exigences de contrôle.",
+          "finding": "Notre revue du dispositif de supervision des prestations informatiques externalisées a révélé l'absence de rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions, qui héberge, maintient et exploite les applications Navision et VLL. Aucun contrat de niveau de service (SLA) formalisé et signé n'a pu être présenté pour 2024. Par ailleurs, aucun contrôle de second niveau n'est réalisé par l'entité pour s'assurer de l'efficacité des contrôles mis en place par le prestataire sur les processus externalisés.",
+          "compensating_procedure": "Héliaq Solutions indique être en cours de préparation d'une certification ISO 27001. Aucun calendrier précis n'a pu être communiqué. Les échanges avec le prestataire se font via des réunions mensuelles informelles sans compte-rendu formalisé.",
+          "risk_impact": "Perte de contrôle sur les services externalisés et leurs efficacités.",
+          "impact_detail": "Dépendance fournisseur et dérive des niveaux de service.",
+          "root_cause": "Absence de rapport ISAE 3402 Type 2 et d'un SLA formalisé pour le prestataire Héliaq Solutions.",
+          "recommendation": "Formaliser le pilotage des prestations externalisées avec des SLA et des mécanismes de contrôle appropriés.",
+          "recommendation_objective": "Assurer le suivi et la conformité des services externalisés.",
+          "recommendation_steps": [
+            "Rédiger et formaliser des SLA pour les prestations externalisées avec des indicateurs de performance.",
+            "Planifier des réunions de suivi documentées et revues des performances des prestataires."
+          ],
+          "priority": "High",
+          "priority_justification": "L'absence de rapport ISAE 3402 et d'un SLA formalisé pour le prestataire Héliaq Solutions entraîne un manque de contrôle sur les services externalisés, augmentant la dépendance au fournisseur.",
+          "auditor_comment": "Contrat de service 2024 obtenu mais sans SLA formalisé. Absence confirmée de rapport ISAE 3402 ou équivalent pour Héliaq Solutions.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue du dispositif de supervision des prestations informatiques externalisées a révélé l'absence de rapport ISAE 3402 Type 2 pour le prestataire Héliaq Solutions, qui héberge, maintient et exploite les applications Navision et VLL. Aucun contrat de niveau de service (SLA) formalisé et signé n'a pu être présenté pour 2024. Par ailleurs, aucun contrôle de second niveau n'est réalisé par l'entité pour s'assurer de l'efficacité des contrôles mis en place par le prestataire sur les processus externalisés. Cette situation traduit une faiblesse du contrôle CO-03 et expose l'organisation a un risque de perte de contrôle sur les services externalisés et leurs efficacités pouvant entrainer dépendance fournisseur et dérive des niveaux de service. La cause racine probable identifiee est: Absence de rapport ISAE 3402 Type 2 et d'un SLA formalisé pour le prestataire Héliaq Solutions. Justification: L'absence de rapport ISAE 3402 et d'un SLA formalisé pour le prestataire Héliaq Solutions entraîne un manque de contrôle sur les services externalisés, augmentant la dépendance au fournisseur.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-010",
+          "reference": "PC-01",
+          "domain": "Gestion des changements",
+          "category": "Tests et validation avant mise en production",
+          "application": "SAP S/4HANA",
+          "layer": "Applicative",
+          "owners": "Yassine Chaabane (DSI) / Responsables fonctionnels",
+          "title": "Changements mis en production sans tests formels documentés",
+          "expected_control": "Les changements en production sont approuvés formellement (CAB/validation), testés et documentés avant déploiement.",
+          "finding": "Notre examen de l'échantillon de 25 ordres de transport (OT) SAP passés en production entre janvier et décembre 2024 a révélé que 8 d'entre eux (32%) ne disposent d'aucune documentation de test préalable à la mise en production (absence de plan de test, de résultats de test ou de validation fonctionnelle signée). Parmi ces 8 OT, 3 concernent des programmes ABAP modifiant des flux financiers critiques (valorisation des stocks, calcul des provisions).",
+          "compensating_procedure": "La DSI indique que les changements urgents sont validés oralement par le responsable fonctionnel. Aucune procédure formelle de gestion des changements d'urgence n'existe.",
+          "risk_impact": "Changements non contrôlés, incidents en production et altération de l’intégrité des traitements.",
+          "impact_detail": "Incidents en production pouvant affecter les opérations et la conformité.",
+          "root_cause": "Absence de documentation formelle pour les tests avant mise en production.",
+          "recommendation": "Imposer une validation formelle et une preuve de test avant toute mise en production.",
+          "recommendation_objective": "Assurer l'intégrité et la fiabilité des changements déployés.",
+          "recommendation_steps": [
+            "Documenter tous les tests réalisés avant mise en production et s'assurer de la validation par une autorité compétente.",
+            "Établir un processus formel de gestion des changements d'urgence avec approbations documentées."
+          ],
+          "priority": "High",
+          "priority_justification": "Le fait que 32% des ordres de transport en production ne disposent d'aucune documentation de test préalable représente un risque élevé d'incidents pouvant affecter les opérations.",
+          "auditor_comment": "Tests réalisés sur un échantillon de 25 OT tirés aléatoirement sur la liste des 312 OT passés en production en 2024. 8 OT sans documentation de test (32%).",
+          "management_summary": "Nous avons releve sur sap s/4hana le point suivant: Notre examen de l'échantillon de 25 ordres de transport (OT) SAP passés en production entre janvier et décembre 2024 a révélé que 8 d'entre eux (32%) ne disposent d'aucune documentation de test préalable à la mise en production (absence de plan de test, de résultats de test ou de validation fonctionnelle signée). Parmi ces 8 OT, 3 concernent des programmes ABAP modifiant des flux financiers critiques (valorisation des stocks, calcul des provisions). Cette situation traduit une faiblesse du contrôle PC-01 et expose l'organisation a un risque de changements non contrôlés, incidents en production et altération de l’intégrité des traitements pouvant entrainer incidents en production pouvant affecter les opérations et la conformité. La cause racine probable identifiee est: Absence de documentation formelle pour les tests avant mise en production. Justification: Le fait que 32% des ordres de transport en production ne disposent d'aucune documentation de test préalable représente un risque élevé d'incidents pouvant affecter les opérations.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        },
+        {
+          "observation_id": "OBS-011",
+          "reference": "PC-02",
+          "domain": "Gestion des changements",
+          "category": "Séparation des environnements",
+          "application": "Navision (BC)",
+          "layer": "Applicative",
+          "owners": "Héliaq Solutions / Yassine Chaabane (DSI)",
+          "title": "Séparation formelle des environnements de développement et production – Navision",
+          "expected_control": "Les environnements de développement, test et production sont séparés et les accès cumulés sont encadrés (SoD, dérogations).",
+          "finding": "Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production. Les modifications applicatives sont testées directement en production sur une société fictive hébergée dans la même instance. Cette configuration ne garantit pas une séparation adéquate des tâches et expose l'environnement de production à des modifications non validées.",
+          "compensating_procedure": "Le prestataire Héliaq Solutions indique que les modifications sont validées par l'utilisateur clé avant application. Aucune validation documentée n'a pu être produite pour 6 des 9 changements testés.",
+          "risk_impact": "Modification non autorisée en production.",
+          "impact_detail": "Risque accru d'erreurs et d'incidents en production.",
+          "root_cause": "Absence de séparation formelle des environnements de développement et de production.",
+          "recommendation": "Créer des environnements distincts pour le développement et la production, avec des contrôles appropriés.",
+          "recommendation_objective": "Réduire les risques liés aux modifications non validées en production.",
+          "recommendation_steps": [
+            "Mettre en place des environnements de test séparés et documenter les éventuelles dérogations.",
+            "Renforcer les contrôles d'accès et les validations avant mise en production."
+          ],
+          "priority": "High",
+          "priority_justification": "La priorite élevée est justifiee par l'absence explicite de contrôle ou de preuve, telle que decrite dans le constat: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production.",
+          "auditor_comment": "Constaté lors de l'entretien avec le prestataire Héliaq Solutions et confirmé par inspection de la configuration Navision. 6/9 changements sans validation documentée.",
+          "management_summary": "Nous avons releve sur navision (bc) le point suivant: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production. Les modifications applicatives sont testées directement en production sur une société fictive hébergée dans la même instance. Cette configuration ne garantit pas une séparation adéquate des tâches et expose l'environnement de production à des modifications non validées. Cette situation traduit une faiblesse du contrôle PC-02 et expose l'organisation a un risque de modification non autorisée en production pouvant entrainer risque accru d'erreurs et d'incidents en production. La cause racine probable identifiee est: Absence de séparation formelle des environnements de développement et de production. Justification: La priorite élevée est justifiee par l'absence explicite de contrôle ou de preuve, telle que decrite dans le constat: Notre revue de la gestion des changements sur l'application Navision (Business Central) a révélé l'absence d'un environnement de test distinct de l'environnement de production.Au regard de son effet potentiel sur le dispositif de contrôle interne, la priorite retenue est élevée."
+        }
+      ],
+      "prior_recommendations_follow_up": [],
+      "appendices": [],
+      "executive_summary": "Notre revue ITGC réalisée chez Direction des Systèmes d'Information – Groupe Maghreb Industries sur la période Octobre 2024 – Janvier 2025 a mis en évidence 14 observation(s) sur le perimetre suivant: SAP S/4HANA, Navision (BC), VLL, VLP.",
+      "conclusion": "Nous recommandons la mise en oeuvre prioritaire d'un plan d'action cible sur la gestion des accès, opérations informatiques et la gestion des changements, ainsi qu'un pilotage formalise (responsables, echeances, preuves) pour assurer la reduction durable des risques."
+    },
+    "answer": "## Executive Summary\nNotre revue ITGC réalisée chez Direction des Systèmes d'Information – Groupe Maghreb Industries sur la période Octobre 2024 – Janvier 2025 a mis en évidence 14 observation(s) sur le perimetre suivant: SAP S/4HANA, Navision (BC), VLL, VLP.\n\n## General Synthesis\nAu total, 14 observation(s) ont ete identifiees, dont 0 critique(s), 14 élevée(s), 0 moyenne(s) et 0 faible(s). Le niveau de maturité global du dispositif est estime faible a moderee. Les principaux foyers de risque concernent la gestion des accès, opérations informatiques et la gestion des changements. Les principales faiblesses identifiees concernent accès: APD-02 (comptes actifs post-départ), APD-02 (comptes actifs post-départ); changements: PC-01 (changements mis en production sans tests formels documentés), PC-02 (séparation formelle des environnements de développement et production – navision); exploitation: CO-01 (pra non testé et documentation à actualiser), CO-02 (processus de gestion des incidents non formalisé). Des actions correctives sont attendues a court terme sur les points de priorité critique/élevée.\n\n## Priority Overview\nHigh: 14\n\n## Key Findings\n- APD-02 | SAP S/4HANA | Comptes actifs post-départ | Priorite: High\n- APD-02 | SAP S/4HANA | Comptes actifs post-départ | Priorite: High\n- APD-02 | SAP S/4HANA | Comptes privilégiés non révoqués après départ | Priorite: High\n- APD-02 | SAP S/4HANA | Comptes actifs post-départ | Priorite: High\n- APD-03 | SAP S/4HANA | Supervision des comptes génériques et administrateurs SAP | Priorite: High\n\n## Conclusion\nNous recommandons la mise en oeuvre prioritaire d'un plan d'action cible sur la gestion des accès, opérations informatiques et la gestion des changements, ainsi qu'un pilotage formalise (responsables, echeances, preuves) pour assurer la reduction durable des risques.\n",
+    "sources": []
+  }
+}

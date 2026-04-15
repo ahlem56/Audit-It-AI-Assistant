@@ -1,45 +1,30 @@
-from langchain_openai import AzureChatOpenAI
-from app.config.settings import (
-    AZURE_OPENAI_ENDPOINT,
-    AZURE_OPENAI_KEY,
-    AZURE_OPENAI_API_VERSION,
-    GPT_DEPLOYMENT
-)
+from app.services.llm_clients import get_chat_llm
 
-llm = AzureChatOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_deployment=GPT_DEPLOYMENT
-)
+llm = get_chat_llm()
+
+VALID_INTENTS = {"qa", "report"}
 
 
-def classify_intent(user_input: str):
-
+def classify_intent(user_input: str) -> str:
     prompt = f"""
-You are an AI system that classifies a user's request for an IT Audit Assistant.
+You are an AI system that classifies a user's request for an Audit Assistant.
 
-Choose ONLY one intent from this list:
+Choose ONLY one intent:
 
-qa → when the user asks a question or requests an explanation about documents or policies.
+qa -> when the user asks a question
 
-rcm → when the user asks to generate a Risk Control Matrix.
-
-observation → when the user asks for an audit observation, audit finding, or audit issue.
-
-report → when the user asks for a complete audit report.
+report -> when the user:
+- provides audit observations
+- asks to generate an audit report
+- asks to analyze audit findings
 
 User request:
 {user_input}
 
-Return ONLY one word:
+Return ONLY:
 qa
-rcm
-observation
 report
 """
     response = llm.invoke(prompt)
-
     intent = response.content.strip().lower()
-
-    return intent
+    return intent if intent in VALID_INTENTS else "qa"

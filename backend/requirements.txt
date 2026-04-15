@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+openpyxl
+pywin32
+langchain
+langchain-openai
+langchain-community
+openai
+azure-core
+azure-search-documents
+azure-storage-blob

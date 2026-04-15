@@ -1,0 +1,14 @@
+{
+  "mission_id": "audit_2025_001",
+  "name": "Audit ITGC – Revue des contrôles généraux informatiques FY2025",
+  "client_name": "Direction des Systèmes d'Information – Groupe Maghreb Industries",
+  "fiscal_year": "FY25",
+  "status": "Ready",
+  "created_at": "2026-04-15T15:26:01+00:00",
+  "updated_at": "2026-04-15T15:41:19+00:00",
+  "uploaded_file_name": "Exemple_Input_Observations_ITGC.xlsx",
+  "parsing_status": "parsed",
+  "observations_count": 14,
+  "applications_count": 2,
+  "control_ids_count": 9
+}
