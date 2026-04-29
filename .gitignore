@@ -1,2 +1,38 @@
 .env
 .env.*
+!.env.example
+!backend/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# Runtime logs
+*.log
+uvicorn.*.log
+
+# Local runtime data
+backend/app/data/auth.sqlite3
+backend/app/data/profile_images/
+backend/app/data/latest_audit_input.json
+backend/app/data/missions/
+app/data/
+
+# Generated previews / temporary exports
+backend/app/data/preview_report*.pptx
+backend/app/data/test_export_template_based*.pptx
+rapportTemplate.inspect.docx
