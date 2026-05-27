@@ -4,8 +4,6 @@ from app.models.agent_outputs import RetrievalPlan
 from app.services.llm_clients import get_chat_llm
 from app.utils.json_parser import extract_json_from_response
 
-llm = get_chat_llm()
-
 
 class PlannerAgent:
     def run(self, input_data: dict) -> RetrievalPlan:
@@ -36,6 +34,7 @@ Rules:
 - comparison_required = true if the task needs comparison across sources.
 - Return JSON only.
 """
+        llm = get_chat_llm()
         response = llm.invoke(prompt)
         parsed = extract_json_from_response(response.content)
         return RetrievalPlan.model_validate(parsed)

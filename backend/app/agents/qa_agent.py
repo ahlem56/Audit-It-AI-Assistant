@@ -9,7 +9,6 @@ from app.services.llm_clients import get_chat_llm
 from app.services.retrieval_service import retrieve_documents
 from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
 
-llm = get_chat_llm()
 _OBSERVATION_ID_RE = re.compile(r"\bOBS-\d+\b", re.IGNORECASE)
 _TOP_RISKS_RE = re.compile(r"\b(top\s*risks?|principaux?\s+risques?|risques?\s+majeurs?)\b", re.IGNORECASE)
 _INSUFFICIENT_EVIDENCE = "The available context does not provide enough evidence to answer this conclusively."
@@ -58,6 +57,7 @@ Context:
 Question:
 {question}
 """
+        llm = get_chat_llm()
         response = llm.invoke(prompt)
         answer = normalize_citations(response.content)
 

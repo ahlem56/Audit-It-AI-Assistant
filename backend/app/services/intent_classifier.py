@@ -1,7 +1,5 @@
 from app.services.llm_clients import get_chat_llm
 
-llm = get_chat_llm()
-
 VALID_INTENTS = {"qa", "report"}
 
 
@@ -25,6 +23,7 @@ Return ONLY:
 qa
 report
 """
+    llm = get_chat_llm()
     response = llm.invoke(prompt)
     intent = response.content.strip().lower()
     return intent if intent in VALID_INTENTS else "qa"

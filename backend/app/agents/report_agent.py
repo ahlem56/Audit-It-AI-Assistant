@@ -2,29 +2,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from langchain_openai import AzureChatOpenAI
-
-from app.config.settings import (
-    AZURE_OPENAI_API_VERSION,
-    AZURE_OPENAI_ENDPOINT,
-    AZURE_OPENAI_KEY,
-    GPT_DEPLOYMENT,
-)
 from app.models.agent_outputs import SourceReference
 from app.services.audit_input_service import load_latest_audit_input
+from app.services.llm_clients import get_chat_llm
 from app.services.report_composer_service import compose_audit_report
 from app.services.french_polish_service import polish_report_payload
 from app.services.retrieval_service import retrieve_documents
 from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
 from app.utils.json_parser import extract_json_from_response
-
-
-llm = AzureChatOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_deployment=GPT_DEPLOYMENT,
-)
 
 
 def _build_structured_answer(structured_output) -> str:
@@ -100,6 +85,7 @@ Context:
 User request:
 {user_request}
 """
+    llm = get_chat_llm()
     response = llm.invoke(prompt)
     raw_text = normalize_citations(response.content)
     parsed_json = extract_json_from_response(raw_text)

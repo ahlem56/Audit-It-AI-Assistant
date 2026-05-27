@@ -4,8 +4,6 @@ from app.models.agent_outputs import RetrievalStepEvaluation
 from app.services.llm_clients import get_chat_llm
 from app.utils.json_parser import extract_json_from_response
 
-llm = get_chat_llm()
-
 
 class RetrievalEvaluatorAgent:
     def run(self, input_data: dict) -> RetrievalStepEvaluation:
@@ -42,6 +40,7 @@ Rules:
 - sufficient = true only if the retrieved information is enough for this step.
 - If insufficient, suggest retry_step such as "logs", "procedures", or "general".
 """
+        llm = get_chat_llm()
         response = llm.invoke(prompt)
 
         try:

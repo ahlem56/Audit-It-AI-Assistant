@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, chat, feedbacks, m365, missions, notifications, observations, security, upload
-from app.config.settings import APP_NAME
+from app.config.settings import APP_NAME, AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_INDEX, AZURE_SEARCH_KEY
 from app.services.auth_service import init_auth_storage, require_authenticated_user
 from app.services.search_service import ensure_search_index_schema
 from app.services.sql_storage_service import init_azure_sql_storage
@@ -32,7 +32,10 @@ app.add_middleware(
 def startup() -> None:
     init_azure_sql_storage()
     init_auth_storage()
-    ensure_search_index_schema()
+    if AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_KEY and AZURE_SEARCH_INDEX:
+        ensure_search_index_schema()
+    else:
+        logging.info("Azure AI Search not configured. Skipping search index startup check.")
 
 
 app.include_router(auth.router, tags=["auth"])

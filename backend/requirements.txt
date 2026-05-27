@@ -3,8 +3,9 @@ uvicorn
 python-multipart
 python-dotenv
 openpyxl
-pywin32
+pywin32; platform_system=="Windows"
 langchain
+langchain-text-splitters
 langchain-openai
 langchain-community
 openai
@@ -14,3 +15,4 @@ azure-storage-blob
 pyodbc
 docxtpl
 python-docx
+sqlalchemy
