@@ -11,3 +11,6 @@ openai
 azure-core
 azure-search-documents
 azure-storage-blob
+pyodbc
+docxtpl
+python-docx

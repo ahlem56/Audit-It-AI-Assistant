@@ -3,22 +3,20 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from app.agents.base import BaseAgent
 from app.agents.priority_agent import classify_priority, enforce_min_priority
 from app.models.audit_input import StructuredAuditInput
 from app.services.llm_clients import get_chat_llm
 from app.services.retrieval_service import retrieve_documents
-from app.utils.citation_cleaner import normalize_citations
-from app.utils.citation_formatter import build_cited_context
-from app.utils.source_formatter import format_sources
+from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
 
 llm = get_chat_llm()
 _OBSERVATION_ID_RE = re.compile(r"\bOBS-\d+\b", re.IGNORECASE)
+_TOP_RISKS_RE = re.compile(r"\b(top\s*risks?|principaux?\s+risques?|risques?\s+majeurs?)\b", re.IGNORECASE)
 _INSUFFICIENT_EVIDENCE = "The available context does not provide enough evidence to answer this conclusively."
 _MISSION_INSUFFICIENT_EVIDENCE = "The selected mission does not provide enough evidence to answer this conclusively."
 
 
-class QAAgent(BaseAgent):
+class QAAgent:
     def run(self, input_data: dict) -> dict:
         question = input_data["question"]
         docs = input_data.get("docs")
@@ -98,6 +96,10 @@ def _build_mission_overview_doc(audit_input: StructuredAuditInput) -> dict:
 
 
 def _observation_source(audit_input: StructuredAuditInput, observation) -> dict:
+    return _observation_source_with_id(audit_input, observation, source_id="Source 1")
+
+
+def _observation_source_with_id(audit_input: StructuredAuditInput, observation, *, source_id: str) -> dict:
     mission_title = _mission_document_name(audit_input)
     content = "\n".join(
         [
@@ -106,13 +108,16 @@ def _observation_source(audit_input: StructuredAuditInput, observation) -> dict:
             f"Application: {observation.application}",
             f"Titre: {observation.titre_observation}",
             f"Constat: {observation.constat}",
+            f"Risque associe: {observation.risque_associe or ''}",
+            f"Impact potentiel: {observation.impact_potentiel or ''}",
             f"Procedure compensatoire: {observation.procedure_compensatoire}",
             f"Priority: {observation.priority or ''}",
+            f"Priority reason: {observation.priority_reason or ''}",
             f"Priority justification: {observation.priority_justification or ''}",
         ]
     )
     return {
-        "source_id": "Source 1",
+        "source_id": source_id,
         "document_name": mission_title,
         "chunk_id": None,
         "score": None,
@@ -285,9 +290,157 @@ def _build_observation_answer(question: str, observation) -> str:
     )
 
 
+def _build_observation_answer_v2(question: str, observation) -> str:
+    priority = _determine_priority(observation)
+    title = (observation.titre_observation or observation.observation_id or "Cette observation").strip()
+    application = (observation.application or "le périmètre concerné").strip()
+    risk = (observation.risque_associe or "").strip()
+    impact = (observation.impact_potentiel or "").strip()
+    constat = (observation.constat or "").strip()
+    justification = (observation.priority_justification or "").strip()
+
+    answer_parts = [
+        f"{observation.observation_id} est classée {priority} car l'observation « {title} » met en évidence une faiblesse de contrôle sur {application}."
+    ]
+
+    if justification:
+        answer_parts.append(f"Les faits retenus pour la classification montrent que {justification.rstrip('.')}.")
+    elif constat:
+        answer_parts.append(f"Les éléments probants disponibles dans le constat sont les suivants: {constat.rstrip('.')}.")
+
+    if risk:
+        risk_sentence = f"Le principal risque métier est {risk.rstrip('.').lower()}"
+        if impact:
+            risk_sentence += f", avec comme impact potentiel {impact.rstrip('.').lower()}"
+        answer_parts.append(risk_sentence + ".")
+    elif impact:
+        answer_parts.append(f"L'impact potentiel identifié est {impact.rstrip('.').lower()}.")
+
+    if priority == "Critical":
+        answer_parts.append(
+            "Le niveau Critical est retenu car l'exposition dépasse une simple anomalie administrative et peut affecter des accès sensibles, des opérations critiques ou la sécurité globale du périmètre audité."
+        )
+    elif priority == "High":
+        answer_parts.append(
+            "Le niveau High est retenu car la faiblesse crée une exposition significative qui nécessite une remédiation prioritaire, sans atteindre nécessairement le seuil de criticité maximale."
+        )
+    elif priority == "Medium":
+        answer_parts.append(
+            "Le niveau Medium traduit une faiblesse réelle du dispositif de contrôle, avec une exposition qui reste plus contenue à ce stade."
+        )
+    else:
+        answer_parts.append(
+            "Le niveau Low traduit un écart à corriger, avec une exposition plus limitée au regard des éléments actuellement disponibles."
+        )
+
+    return " ".join(answer_parts) + " [Source 1]"
+
+
+def _priority_rank(priority: str | None) -> int:
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    return order.get((priority or "").strip(), 4)
+
+
+def _risk_exposure_score(observation) -> tuple[int, int, str, str]:
+    priority = _determine_priority(observation)
+    text = " ".join(
+        [
+            observation.titre_observation or "",
+            observation.constat or "",
+            observation.risque_associe or "",
+            observation.impact_potentiel or "",
+            observation.application or "",
+        ]
+    ).lower()
+
+    exposure_boost = 0
+    if any(marker in text for marker in ("t24", "swift", "openbanking", "banque en ligne", "paie", "payroll")):
+        exposure_boost += 2
+    if any(marker in text for marker in ("operation", "transaction", "mouvement", "virement", "fraude")):
+        exposure_boost += 2
+    if any(marker in text for marker in ("post-depart", "post départ", "post depart", "comptes actifs", "superuser", "compte generique", "compte partagé", "partage")):
+        exposure_boost += 1
+    if any(marker in text for marker in ("pra", "pca", "sinistre", "patch", "correctif", "vulnerabil")):
+        exposure_boost += 1
+
+    return (_priority_rank(priority), -exposure_boost, observation.observation_id or "", priority)
+
+
+def _truncate_fact(text: str, limit: int = 220) -> str:
+    value = " ".join((text or "").split()).strip()
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3].rstrip(" .,;:") + "..."
+
+
+def _top_reason(priority: str, observation) -> str:
+    risk = (observation.risque_associe or "").strip()
+    impact = (observation.impact_potentiel or "").strip()
+    if priority == "Critical":
+        if impact:
+            return f"Ce point est classé parmi les top risks car son impact potentiel est {impact.rstrip('.').lower()}."
+        return "Ce point est classé parmi les top risks car il combine forte exposition, sensibilité du périmètre et besoin de remédiation immédiate."
+    if priority == "High":
+        if risk:
+            return f"Ce point fait partie des top risks car il crée une exposition significative à {risk.rstrip('.').lower()}."
+        return "Ce point fait partie des top risks car il présente une exposition significative nécessitant une remédiation prioritaire."
+    return "Ce point reste suivi parmi les risques les plus exposés au regard de son effet potentiel sur le dispositif de contrôle."
+
+
+def _build_top_risks_answer(audit_input: StructuredAuditInput) -> dict:
+    reportable = [item for item in audit_input.observations if item.included_in_report]
+    if not reportable:
+        return {
+            "agent": "qa_agent",
+            "question": "top risks",
+            "answer": "Aucun risque majeur ne peut être restitué, car aucune observation exploitable n'est disponible dans la mission sélectionnée.",
+            "sources": [],
+        }
+
+    ranked = sorted(reportable, key=_risk_exposure_score)[:5]
+    intro = (
+        "Les top risks sont classés selon trois critères: "
+        "1) le niveau de priorité retenu, "
+        "2) la sensibilité du périmètre applicatif concerné, "
+        "3) l'impact potentiel métier ou sécurité décrit dans l'observation."
+    )
+
+    lines = [intro, "", "Les risques les plus exposés sont les suivants:"]
+    sources = []
+
+    for index, observation in enumerate(ranked, start=1):
+        source_id = f"Source {index}"
+        priority = _determine_priority(observation)
+        title = (observation.titre_observation or observation.observation_id or "Observation").strip()
+        fact = _truncate_fact(observation.constat or "Fait observé non renseigné.")
+        risk = (observation.risque_associe or "Risque métier non renseigné").strip()
+        why_top = _top_reason(priority, observation)
+
+        lines.extend(
+            [
+                "",
+                f"{index}. {title} ({priority}) [{source_id}]",
+                f"Fait observé: {fact}",
+                f"Risque métier: {risk.rstrip('.')}.",
+                f"Pourquoi c'est un top risk: {why_top}",
+            ]
+        )
+        sources.append(_observation_source_with_id(audit_input, observation, source_id=source_id))
+
+    return {
+        "agent": "qa_agent",
+        "question": "top risks",
+        "answer": "\n".join(lines),
+        "sources": sources,
+    }
+
+
 def answer_mission_question(question: str, audit_input: StructuredAuditInput | None) -> dict | None:
     if audit_input is None:
         return None
+
+    if _TOP_RISKS_RE.search(question or ""):
+        return _build_top_risks_answer(audit_input)
 
     match = _OBSERVATION_ID_RE.search(question or "")
     if match is None:
@@ -304,7 +457,7 @@ def answer_mission_question(question: str, audit_input: StructuredAuditInput | N
     return {
         "agent": "qa_agent",
         "question": question,
-        "answer": _build_observation_answer(question, observation),
+        "answer": _build_observation_answer_v2(question, observation),
         "sources": [_observation_source(audit_input, observation)],
     }
 

@@ -36,3 +36,5 @@ app/data/
 backend/app/data/preview_report*.pptx
 backend/app/data/test_export_template_based*.pptx
 rapportTemplate.inspect.docx
+# PFE report source and generated PDF artifacts
+Rapport_PFE/

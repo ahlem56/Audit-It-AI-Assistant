@@ -19,6 +19,10 @@ _GENERIC_MARKERS = (
     "traiter durablement le constat",
     "en assurer le suivi",
     "mettre en oeuvre la recommandation suivante",
+    "renforcer le controle",
+    "renforcer les controles",
+    "mettre en place un workflow",
+    "assurer le suivi",
 )
 
 
@@ -73,6 +77,69 @@ def _has_action_verb(recommendation: str) -> bool:
     if head.startswith("- ") and any(v in head for v in _ACTION_VERBS):
         return True
     return any(v in lowered for v in _ACTION_VERBS)
+
+
+def _has_audit_evidence(recommendation: str) -> bool:
+    lowered = _keyword_text(recommendation or "")
+    return any(
+        marker in lowered
+        for marker in (
+            "preuve",
+            "preuves",
+            "journal",
+            "journaux",
+            "trace",
+            "tracabilite",
+            "validation",
+            "accuse",
+            "revue",
+            "rapport",
+            "tableau de bord",
+            "compte rendu",
+            "resultats",
+            "logs",
+        )
+    )
+
+
+def _has_owner_or_responsibility(recommendation: str) -> bool:
+    lowered = _keyword_text(recommendation or "")
+    return any(
+        marker in lowered
+        for marker in (
+            "responsable",
+            "responsabilite",
+            "pilote",
+            "pilotage",
+            "dsi",
+            "drh",
+            "rssi",
+            "metier",
+            "manager",
+            "equipe",
+        )
+    )
+
+
+def _has_follow_up_mechanism(recommendation: str) -> bool:
+    lowered = _keyword_text(recommendation or "")
+    return any(
+        marker in lowered
+        for marker in (
+            "suivi",
+            "periodique",
+            "mensuel",
+            "trimestriel",
+            "revue",
+            "indicateur",
+            "kpi",
+            "sla",
+            "tableau de bord",
+            "exceptions",
+            "echeance",
+            "delai",
+        )
+    )
 
 
 def _seems_off_topic(observation: AuditObservation, recommendation: str) -> bool:
@@ -154,6 +221,15 @@ def validate_recommendation(observation: AuditObservation, recommendation: str) 
     if not _has_action_verb(value):
         issues.append("recommendation_missing_action_verb")
 
+    if not _has_audit_evidence(value):
+        issues.append("recommendation_missing_evidence_mechanism")
+
+    if not _has_owner_or_responsibility(value):
+        issues.append("recommendation_missing_owner")
+
+    if not _has_follow_up_mechanism(value):
+        issues.append("recommendation_missing_follow_up")
+
     if _seems_off_topic(observation, value):
         issues.append("recommendation_off_topic_vs_control")
 
@@ -163,6 +239,8 @@ def validate_recommendation(observation: AuditObservation, recommendation: str) 
             "recommendation_empty",
             "recommendation_generic",
             "recommendation_off_topic_vs_control",
+            "recommendation_missing_evidence_mechanism",
+            "recommendation_missing_follow_up",
         )
     )
     return RecommendationValidation(ok=ok, issues=issues)

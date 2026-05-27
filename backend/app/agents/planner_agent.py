@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.agents.base import BaseAgent
 from app.models.agent_outputs import RetrievalPlan
 from app.services.llm_clients import get_chat_llm
 from app.utils.json_parser import extract_json_from_response
@@ -8,7 +7,7 @@ from app.utils.json_parser import extract_json_from_response
 llm = get_chat_llm()
 
 
-class PlannerAgent(BaseAgent):
+class PlannerAgent:
     def run(self, input_data: dict) -> RetrievalPlan:
         user_input = input_data["user_input"]
         intent = input_data["intent"]

@@ -15,10 +15,8 @@ from app.services.audit_input_service import load_latest_audit_input
 from app.services.report_composer_service import compose_audit_report
 from app.services.french_polish_service import polish_report_payload
 from app.services.retrieval_service import retrieve_documents
-from app.utils.citation_cleaner import normalize_citations
-from app.utils.citation_formatter import build_cited_context
+from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
 from app.utils.json_parser import extract_json_from_response
-from app.utils.source_formatter import format_sources
 
 
 llm = AzureChatOpenAI(

@@ -2,8 +2,8 @@ import type { MissionStatus } from '../types';
 
 const badgeStyles: Record<MissionStatus, string> = {
   Draft: 'bg-slate-100 text-slate-700',
-  Ready: 'bg-sky-100 text-sky-800',
-  Finalized: 'bg-emerald-100 text-emerald-800'
+  Ready: 'bg-[#fff1e8] text-[#ef5b0c]',
+  Finalized: 'bg-[#fde7e3] text-[#c74634]'
 };
 
 interface StatusBadgeProps {

@@ -30,12 +30,14 @@ def flatten_results(results: dict) -> list[dict]:
     return merged
 
 
-def route_request(user_input: str, mission_id: str | None = None):
-    if mission_id and get_mission(mission_id) is None:
+def route_request(user_input: str, mission_id: str | None = None, *, user_id: str | None = None):
+    if not mission_id:
+        raise ValueError("A mission_id is required for mission-scoped AI access.")
+    if get_mission(mission_id, user_id=user_id) is None:
         raise ValueError(f"Mission '{mission_id}' was not found.")
 
-    audit_input = load_mission_audit_input(mission_id) if mission_id else None
-    report_result = load_mission_report_cache(mission_id) if mission_id else None
+    audit_input = load_mission_audit_input(mission_id, user_id=user_id) if mission_id else None
+    report_result = load_mission_report_cache(mission_id, user_id=user_id) if mission_id else None
     mission_result = answer_mission_question(user_input, audit_input)
     if mission_result is not None:
         mission_result.update(

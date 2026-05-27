@@ -16,10 +16,10 @@ const heatmapMatrix = [
 ];
 
 const priorityColors = {
-  Critical: '#FCA5A5',
-  High: '#FDBA74',
-  Medium: '#FDE68A',
-  Low: '#86EFAC'
+  Critical: '#c74634',
+  High: '#ef5b0c',
+  Medium: '#ffb600',
+  Low: '#d6d3d1'
 };
 
 export default function DashboardPage() {
@@ -49,39 +49,39 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Analytics</p>
-          <h1 className="text-3xl font-semibold text-slate-900">{activeMission?.name} dashboard</h1>
-          <p className="mt-2 text-sm text-slate-600">Live overview of observations, risk distribution, and validation progress for the current mission.</p>
+          <p className="pwc-kicker">Analytics</p>
+          <h1 className="pwc-title mt-2 text-4xl font-semibold">{activeMission?.name} dashboard</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Live overview of observations, risk distribution, and validation progress for the current mission.</p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50">
+        <button className="pwc-action-muted">
           <RefreshCcw className="h-4 w-4" /> Refresh
         </button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-panel p-6">
           <p className="text-sm text-slate-500">Total observations</p>
           <p className="mt-4 text-3xl font-semibold text-slate-900">{observations.length}</p>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-panel p-6">
           <p className="text-sm text-slate-500">Critical count</p>
-          <p className="mt-4 text-3xl font-semibold text-red-600">{observations.filter((obs) => obs.priority === 'Critical').length}</p>
+          <p className="mt-4 text-3xl font-semibold text-[#c74634]">{observations.filter((obs) => obs.priority === 'Critical').length}</p>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-panel p-6">
           <p className="text-sm text-slate-500">High count</p>
-          <p className="mt-4 text-3xl font-semibold text-orange-600">{observations.filter((obs) => obs.priority === 'High').length}</p>
+          <p className="mt-4 text-3xl font-semibold text-[#ef5b0c]">{observations.filter((obs) => obs.priority === 'High').length}</p>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-panel p-6">
           <p className="text-sm text-slate-500">Validated progress</p>
           <p className="mt-4 text-3xl font-semibold text-slate-900">{validatedCount}/{observations.length}</p>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(validatedCount / Math.max(observations.length, 1)) * 100}%` }} />
+            <div className="h-full rounded-full bg-[#ef5b0c]" style={{ width: `${(validatedCount / Math.max(observations.length, 1)) * 100}%` }} />
           </div>
         </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.85fr_0.65fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-main-panel">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500">Priority distribution</p>
@@ -101,19 +101,19 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-main-panel">
           <div className="mb-6">
             <p className="text-sm text-slate-500">Top 5 risks</p>
             <h2 className="mt-2 text-lg font-semibold text-slate-900">Highest priority observations</h2>
           </div>
           <div className="space-y-4">
             {topRisks.map((obs, index) => (
-              <div key={obs.id} className="rounded-3xl border border-slate-200 p-4">
+              <div key={obs.id} className="rounded-3xl border border-slate-200/80 bg-white/72 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">#{index + 1}</p>
-                <p className="mt-2 font-semibold text-slate-900">{obs.control_id} — {obs.application}</p>
+                <p className="mt-2 font-semibold text-slate-900">{obs.control_id} â€” {obs.application}</p>
                 <p className="mt-2 text-sm text-slate-600 line-clamp-2">{obs.finding}</p>
                 <div className="mt-3 flex items-center gap-3 text-xs font-semibold text-slate-700">
-                  <span className="rounded-full bg-red-100 px-2 py-1 text-red-700">{obs.priority}</span>
+                  <span className="rounded-full bg-[#fff1e8] px-2 py-1 text-[#ef5b0c]">{obs.priority}</span>
                   <span className="text-slate-500">{obs.status}</span>
                 </div>
               </div>
@@ -123,7 +123,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.8fr_0.6fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-main-panel">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500">Process review</p>
@@ -135,7 +135,7 @@ export default function DashboardPage() {
               <BarChart data={processCounts} margin={{ left: -20, right: 0 }}>
                 <Bar dataKey="count" radius={[12, 12, 0, 0]}>
                   {processCounts.map((entry) => (
-                    <Cell key={entry.process} fill="#2563EB" />
+                    <Cell key={entry.process} fill="#ef5b0c" />
                   ))}
                 </Bar>
               </BarChart>
@@ -143,7 +143,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="pwc-main-panel">
           <p className="text-sm text-slate-500">Heatmap</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">Applications vs control processes</h2>
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200">

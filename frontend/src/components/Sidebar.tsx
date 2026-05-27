@@ -1,21 +1,27 @@
-import { Archive, BarChart3, Layers, MessageSquare, MessageCircleMore, User, ChevronDown } from 'lucide-react';
+import { Archive, BarChart3, BellRing, Layers, MessageSquare, MessageCircleMore, ShieldCheck, User, ChevronDown, Settings } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useMissionContext } from '../context/MissionContext';
+import { useAuthContext } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import logo from '../assets/pwc-logo.png';
-
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: BarChart3 },
-  { to: '/observations', label: 'Observations', icon: Layers },
-  { to: '/chat', label: 'Chat', icon: MessageSquare },
-  { to: '/report', label: 'Report', icon: Archive },
-  { to: '/feedback', label: 'Feedback', icon: MessageCircleMore }
-];
 
 export default function Sidebar() {
   const { activeMission, missions, setActiveMissionId } = useMissionContext();
+  const { user, logout } = useAuthContext();
+  const { text } = useLanguage();
   const [showMissionSelector, setShowMissionSelector] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navItems = [
+    { to: '/', label: text.sidebar.dashboard, icon: BarChart3 },
+    { to: '/observations', label: text.sidebar.observations, icon: Layers },
+    { to: '/chat', label: text.sidebar.chat, icon: MessageSquare },
+    { to: '/report', label: text.sidebar.report, icon: Archive },
+    { to: '/feedback', label: text.sidebar.feedback, icon: MessageCircleMore },
+    { to: '/settings', label: text.sidebar.settings, icon: Settings },
+    { to: '/notifications', label: 'Notifications', icon: BellRing },
+    { to: '/security', label: 'Security', icon: ShieldCheck }
+  ];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -29,15 +35,18 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-80 border-r border-slate-200 bg-white px-6 py-8 flex flex-col justify-between">
+    <aside className="pwc-sidebar relative flex w-80 flex-col border-r border-slate-200/80 px-6 py-8">
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/70" />
       <div>
-        <div className="mb-10 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
-           <img src={logo} alt="PwC logo" className="h-10 w-auto" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Audit ITGC Assistant</p>
-            <p className="text-xs text-slate-500">Mission workspace</p>
+        <div className="pwc-sidebar-band mb-10 flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="pwc-logo-shell flex h-25 w-16 items-center justify-center rounded-2xl">
+              <img src={logo} alt="PwC logo" className="h-10 w-auto" />
+            </div>
+            <div className="relative z-[1] min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-950">{text.sidebar.productName}</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-700">{text.sidebar.workspace}</p>
+            </div>
           </div>
         </div>
 
@@ -45,17 +54,17 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setShowMissionSelector(!showMissionSelector)}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left hover:border-slate-300"
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white/80 px-4 py-4 text-left hover:border-slate-300 hover:bg-white"
           >
             <div>
-              <p className="text-sm font-semibold text-slate-900">{activeMission?.name ?? 'Select mission'}</p>
-              <p className="mt-1 text-xs text-slate-500">Status: {activeMission?.status ?? 'Draft'}</p>
+              <p className="text-sm font-semibold text-slate-900">{activeMission?.name ?? text.sidebar.selectMission}</p>
+              <p className="mt-1 text-xs text-slate-500">{text.sidebar.status}: {activeMission?.status ?? 'Draft'}</p>
             </div>
             <ChevronDown className="h-5 w-5 text-slate-500" />
           </button>
 
           {showMissionSelector && (
-            <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl border border-slate-200 bg-white shadow-lg z-10">
+            <div className="absolute left-0 right-0 top-full z-10 mt-2 rounded-2xl border border-slate-200 bg-white shadow-lg">
               {missions.map((mission) => (
                 <button
                   key={mission.mission_id}
@@ -64,17 +73,17 @@ export default function Sidebar() {
                     setActiveMissionId(mission.mission_id);
                     setShowMissionSelector(false);
                   }}
-                  className={`w-full px-4 py-3 text-left text-sm hover:bg-slate-50 first:rounded-t-2xl last:rounded-b-2xl ${
-                    activeMission?.mission_id === mission.mission_id ? 'bg-slate-100 font-semibold' : ''
+                  className={`w-full px-4 py-3 text-left text-sm first:rounded-t-2xl last:rounded-b-2xl ${
+                    activeMission?.mission_id === mission.mission_id ? 'bg-[#fff3eb] font-semibold' : 'hover:bg-slate-50'
                   }`}
                 >
                   <p className="text-slate-900">{mission.name}</p>
-                  <p className="text-xs text-slate-500">Status: {mission.status}</p>
+                  <p className="text-xs text-slate-500">{text.sidebar.status}: {mission.status}</p>
                 </button>
               ))}
               {missions.length === 0 && (
-                <div className="px-4 py-3 text-sm text-slate-500 text-center">
-                  No missions available
+                <div className="px-4 py-3 text-center text-sm text-slate-500">
+                  {text.sidebar.noMissions}
                 </div>
               )}
             </div>
@@ -89,28 +98,48 @@ export default function Sidebar() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                    isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
-                  }`
+                  `pwc-nav-link ${isActive ? 'pwc-nav-link-active' : ''}`
                 }
               >
-                <Icon className="h-5 w-5" />
-                {item.label}
+                {({ isActive }) => (
+                  <>
+                    <Icon className={`h-5 w-5 ${isActive ? 'text-[#ff8b42]' : ''}`} />
+                    {item.label}
+                  </>
+                )}
               </NavLink>
             );
           })}
         </nav>
-      </div>
-
-      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
-            <User className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Camille Dupont</p>
-            <p className="text-xs text-slate-500">PwC Internal Audit</p>
-          </div>
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white/75 p-4 backdrop-blur">
+          <NavLink
+            to="/settings"
+            className="flex items-center gap-3 rounded-2xl p-1 transition hover:bg-slate-50 focus:outline-none"
+            aria-label="Open profile settings"
+          >
+            {user?.profile_image_url ? (
+              <img
+                src={user.profile_image_url}
+                alt={`${user.display_name || user.email || 'User'} profile`}
+                className="h-10 w-10 rounded-2xl object-cover ring-1 ring-slate-200"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                <User className="h-5 w-5" />
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{user?.display_name || user?.email || text.sidebar.authenticatedUser}</p>
+              <p className="text-xs text-slate-500">{user?.organization || user?.email || text.sidebar.workspaceMember}</p>
+            </div>
+          </NavLink>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-[#ef5b0c]/40 hover:bg-[#fffaf6]"
+          >
+            {text.sidebar.signOut}
+          </button>
         </div>
       </div>
     </aside>

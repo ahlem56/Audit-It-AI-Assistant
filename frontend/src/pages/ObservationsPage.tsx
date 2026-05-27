@@ -8,6 +8,27 @@ import type { Observation, PriorityLevel } from '../types';
 const priorityOptions: PriorityLevel[] = ['Critical', 'High', 'Medium', 'Low'];
 const validationStatusOptions = ['', 'Draft', 'Validated'] as const;
 
+function buildRiskNarrative(observation: Observation) {
+  const risk = observation.risk?.trim();
+  const impact = observation.impact?.trim();
+  const reason = observation.priority_reason?.trim();
+  const justification = observation.priority_justification?.trim();
+
+  const headline = risk
+    ? `Le principal risque métier est ${risk.charAt(0).toLowerCase()}${risk.slice(1)}.`
+    : 'Le risque métier n’est pas encore explicité dans les données de cette observation.';
+
+  const support = justification
+    ? justification.endsWith('.') ? justification : `${justification}.`
+    : 'Aucune justification détaillée n’a encore été générée pour cette observation.';
+
+  const consequence = impact
+    ? `Impact potentiel: ${impact.endsWith('.') ? impact : `${impact}.`}`
+    : 'Impact potentiel non renseigné.';
+
+  return { headline, support, consequence, reason };
+}
+
 export default function ObservationsPage() {
   const navigate = useNavigate();
   const { activeMission, observations, updateObservations, recalculatePriorities } = useMissionContext();
@@ -26,6 +47,10 @@ export default function ObservationsPage() {
   const selectedObservation = useMemo(
     () => localObservations.find((observation) => observation.id === selectedObservationId) ?? null,
     [localObservations, selectedObservationId]
+  );
+  const selectedObservationRisk = useMemo(
+    () => (selectedObservation ? buildRiskNarrative(selectedObservation) : null),
+    [selectedObservation]
   );
 
   const updateObservation = (id: string, updater: (observation: Observation) => Observation) => {
@@ -157,19 +182,19 @@ export default function ObservationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Observations</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Observation register</h1>
+          <p className="pwc-kicker">Observations</p>
+          <h1 className="pwc-title mt-2 text-4xl font-semibold">Observation register</h1>
           <p className="mt-2 text-sm text-slate-500">{activeMission.name}</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button onClick={() => navigate('/chat')} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
+          <button onClick={() => navigate('/chat')} className="pwc-action-dark">
             Open mission chat
           </button>
           <button
             type="button"
             onClick={handleRecalculate}
             disabled={recalculating}
-            className="rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="pwc-action-primary disabled:opacity-50"
           >
             {recalculating ? 'Recalculating...' : 'Recalculate Priorities'}
           </button>
@@ -177,21 +202,21 @@ export default function ObservationsPage() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="rounded-2xl bg-[#c74634] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b23d2d] disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
+      <section className="pwc-main-panel">
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_auto]">
           <label className="space-y-2 text-sm text-slate-700">
             Search
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
+              className="w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-900"
               placeholder="Search observations"
             />
           </label>
@@ -200,7 +225,7 @@ export default function ObservationsPage() {
             <select
               value={priorityFilter}
               onChange={(event) => setPriorityFilter(event.target.value as 'All' | PriorityLevel)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"
+              className="w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-900"
             >
               <option value="All">All</option>
               {priorityOptions.map((option) => (
@@ -215,7 +240,7 @@ export default function ObservationsPage() {
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"
+              className="w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-900"
             >
               <option value="All">All</option>
               {validationStatusOptions.map((status) => (
@@ -228,7 +253,7 @@ export default function ObservationsPage() {
           <div className="flex items-end">
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+              className="pwc-action-dark"
               onClick={handleAddRow}
             >
               <Plus className="h-4 w-4" /> Add new row
@@ -247,12 +272,12 @@ export default function ObservationsPage() {
           <article
             key={observation.id}
             onClick={() => setSelectedObservationId(observation.id)}
-            className="group cursor-pointer rounded-[2rem] border border-slate-200 bg-white p-6 shadow-card transition hover:-translate-y-0.5 hover:border-slate-300"
+            className="group cursor-pointer rounded-[2rem] border border-slate-200 bg-white/88 p-6 shadow-[0_16px_44px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-[#ef5b0c]/30"
           >
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+                  <span className="rounded-full bg-[#fff1e8] px-3 py-1 text-xs font-semibold text-[#ef5b0c]">
                     {observation.observation_id || observation.id}
                   </span>
                   <p className="text-sm font-semibold text-slate-900">
@@ -268,6 +293,10 @@ export default function ObservationsPage() {
                 <p className="mt-4 max-w-5xl text-sm leading-7 text-slate-600">
                   {observation.finding || 'No finding provided.'}
                 </p>
+                <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Risk explanation</p>
+                  <p className="mt-2 leading-6 text-slate-700">{buildRiskNarrative(observation).headline}</p>
+                </div>
               </div>
 
               <div className="flex min-w-[220px] flex-col items-start gap-3 xl:items-end">
@@ -298,7 +327,7 @@ export default function ObservationsPage() {
       />
 
       <aside
-        className={`fixed right-0 top-0 z-50 h-screen w-full max-w-[480px] overflow-y-auto border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${
+        className={`fixed right-0 top-0 z-50 h-screen w-full max-w-[480px] overflow-y-auto border-l border-white/70 bg-[linear-gradient(180deg,rgba(255,248,242,0.96),rgba(255,255,255,0.92))] shadow-2xl transition-transform duration-300 ${
           selectedObservation ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -346,7 +375,7 @@ export default function ObservationsPage() {
                     </select>
                   </div>
                   {selectedObservation.priority_source === 'manual_override' ? (
-                    <span className="rounded-full bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-800">overridden manually</span>
+                  <span className="rounded-full bg-[#fff1e8] px-3 py-2 text-xs font-semibold text-[#ef5b0c]">overridden manually</span>
                   ) : null}
                 </div>
 
@@ -354,6 +383,26 @@ export default function ObservationsPage() {
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Why {selectedObservation.priority || 'this priority'}?</p>
                   <p className="text-sm text-slate-700">{selectedObservation.priority_reason || 'No priority reason available yet.'}</p>
                   <p className="text-sm text-slate-600">{selectedObservation.priority_justification || 'No justification generated yet.'}</p>
+                </div>
+              </section>
+
+              <section className="border-b border-slate-200 pb-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Risk explanation</p>
+                <div className="mt-4 space-y-3 rounded-3xl bg-slate-50 p-4">
+                  <p className="text-sm font-semibold leading-6 text-slate-900">
+                    {selectedObservationRisk?.headline}
+                  </p>
+                  <p className="text-sm leading-6 text-slate-700">
+                    {selectedObservationRisk?.support}
+                  </p>
+                  <p className="text-sm leading-6 text-slate-600">
+                    {selectedObservationRisk?.consequence}
+                  </p>
+                  {selectedObservationRisk?.reason ? (
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                      Decision trace: {selectedObservationRisk.reason}
+                    </p>
+                  ) : null}
                 </div>
               </section>
 
@@ -477,7 +526,7 @@ export default function ObservationsPage() {
                 onClick={() => {
                   navigate('/chat');
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                className="pwc-action-muted inline-flex w-full justify-center"
               >
                 <MessageSquare className="h-4 w-4" /> Ask assistant about this obs
               </button>
@@ -487,7 +536,7 @@ export default function ObservationsPage() {
                   type="button"
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="flex-1 rounded-2xl bg-[#c74634] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b23d2d] disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save changes'}
                 </button>

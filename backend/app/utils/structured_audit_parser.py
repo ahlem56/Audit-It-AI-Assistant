@@ -81,7 +81,16 @@ def _clean_text(value: str) -> str:
 
 
 def _split_values(value: str, separators: tuple[str, ...]) -> list[str]:
-    normalized = _clean_text(value)
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return []
+
+    # Some mission workbooks keep several people in one cell separated only by
+    # wide spacing, e.g. "Name (Role)  Name (Role)". Split those before the
+    # regular whitespace cleanup collapses the separator.
+    normalized = re.sub(r"\s{2,}(?=[A-ZÀ-ÖØ-Ý])", separators[0], raw)
+    normalized = re.sub(r"\)\s+(?=[A-ZÀ-ÖØ-Ý][A-Za-zÀ-ÖØ-öø-ÿ' -]+\s+\()", ")" + separators[0], normalized)
+    normalized = _clean_text(normalized)
     for separator in separators[1:]:
         normalized = normalized.replace(separator, separators[0])
     return [item.strip() for item in normalized.split(separators[0]) if item.strip()]

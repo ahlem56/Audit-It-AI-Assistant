@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 import unicodedata
 import logging
 import re
 
 from app.agents.priority_agent import classify_priority, enforce_min_priority
 from app.agents.priority_agent import VALID_PRIORITIES
-from app.agents.observation_reasoning_agent import infer_observation_reasoning
-from app.agents.priority_reasoning_agent import infer_priority_reasoning
-from app.services.observation_reasoning_validator import validate_reasoning
-from app.services.priority_reasoning_validator import validate_priority_reasoning
+from app.agents.reasoning_agent import infer_observation_reasoning, infer_priority_reasoning
+from app.services.reasoning_validator_service import validate_priority_reasoning, validate_reasoning
 from app.services.recommendation_validator import validate_recommendation
 from app.utils.french_normalizer import normalize_french
 from app.models.audit_input import AuditObservation, StructuredAuditInput
@@ -20,10 +19,13 @@ from app.models.report_sections import (
     ControlMatrixEntry,
     CoveredControl,
     DetailedFinding,
+    FindingTraceability,
     KeyFigure,
     PrioritySummaryItem,
     ProcessSummary,
+    TraceabilitySource,
 )
+from app.services.quality_gate_service import evaluate_report_quality_gate
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,226 @@ def _keyword_text(*values: str) -> str:
     return normalized.lower()
 
 
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _traceability_confidence(
+    *,
+    reasoning_ok: bool,
+    priority_reasoning_ok: bool,
+    recommendation_valid: bool,
+    priority: str,
+    priority_justification: str,
+) -> float:
+    score = 0.55
+    if reasoning_ok:
+        score += 0.1
+    if priority_reasoning_ok:
+        score += 0.12
+    if recommendation_valid:
+        score += 0.08
+    if priority in {"Critical", "High"} and priority_justification.strip():
+        score += 0.08
+    if len(priority_justification.strip()) >= 80:
+        score += 0.04
+    return round(min(score, 0.98), 2)
+
+
+def _traceability_sources(observation: AuditObservation) -> list[TraceabilitySource]:
+    evidence_excerpt = " | ".join(
+        part
+        for part in [
+            (observation.constat or "").strip(),
+            (observation.references_probantes or "").strip(),
+            (observation.commentaire_auditeur or "").strip(),
+        ]
+        if part
+    )[:280]
+
+    sources = [
+        TraceabilitySource(
+            source_id=observation.observation_id or "observation",
+            document_name="mission audit input",
+            source_type="structured_audit_input",
+            excerpt=evidence_excerpt or "Structured mission observation used to generate the finding.",
+        )
+    ]
+
+    if (observation.references_probantes or "").strip():
+        sources.append(
+            TraceabilitySource(
+                source_id=f"{observation.observation_id}-evidence",
+                document_name="references_probantes",
+                source_type="auditor_evidence_reference",
+                excerpt=(observation.references_probantes or "").strip()[:280],
+            )
+        )
+
+    return sources
+
+
+def _traceability_rule_markers(
+    observation: AuditObservation,
+    *,
+    original_reference: str,
+    resolved_reference: str,
+    priority_mode: str,
+    recommendation_mode: str,
+    reasoning_ok: bool,
+    priority_reasoning_ok: bool,
+    final_priority: str,
+) -> list[str]:
+    markers = [f"reference_resolution:{original_reference or 'missing'}->{resolved_reference or 'missing'}"]
+    if original_reference != resolved_reference:
+        markers.append("control_reference_remapped")
+    if reasoning_ok:
+        markers.append("observation_reasoning_validated")
+    if priority_reasoning_ok:
+        markers.append("priority_reasoning_validated")
+    if "enforced" in priority_mode:
+        markers.append("minimum_priority_enforced")
+    if "deterministic" in priority_mode:
+        markers.append("deterministic_priority_rules")
+    if recommendation_mode != "validated_llm":
+        markers.append("recommendation_fallback_rules")
+    if final_priority in {"Critical", "High"}:
+        markers.append("heightened_review_priority")
+    if (observation.priority_source or "").strip() == "manual_override":
+        markers.append("manual_priority_override_preserved")
+    return markers
+
+
+def _reference_process(reference: str) -> str:
+    return ((reference or "").upper().strip().split("-", 1) or [""])[0]
+
+
+def _reference_signal_strength(text: str, markers: tuple[str, ...]) -> int:
+    score = 0
+    for marker in markers:
+        if marker in text:
+            score += 1
+    return score
+
+
+def _reference_scores(observation: AuditObservation) -> dict[str, int]:
+    title_text = _keyword_text(observation.titre_observation)
+    category_text = _keyword_text(observation.categorie_controle)
+    constat_text = _keyword_text(observation.constat, observation.impact_potentiel, observation.application)
+
+    weighted_signals = {
+        "APD-02": (
+            ("post-depart", "post depart", "apres depart", "ancien collaborateur", "anciens collaborateurs", "depart des utilisateurs", "desactivation des comptes"),
+            ("mouvement rh", "depart", "quitte l organisation", "quitte l entreprise", "contrat a pris fin"),
+            (),
+        ),
+        "APD-03": (
+            ("superuser", "teller_admin", "compte generique", "compte partage", "compte commun", "shared account", "generic account", "absence de tracabilite", "tracabilite individuelle"),
+            ("privilegie", "privilege", "journalisation", "tracabilite", "interactive", "interactif", "validation", "annulation", "swift_opr", "operateur swift", "operateurs swift", "droits etendus"),
+            (),
+        ),
+        "APD-04": (
+            ("recertification", "re certification"),
+            ("revue periodique", "revue des acces", "droits incompatibles", "fonctions incompatibles", "4 yeux", "quatre yeux"),
+            (),
+        ),
+        "APD-09": (
+            ("prestataire", "prestataires", "consultant", "consultants"),
+            ("fin de mission", "contrat expire", "contrats ont expire", "echeance des contrats", "revocation des acces prestataires", "compte prestataire"),
+            (),
+        ),
+        "APD-05": (
+            ("mot de passe", "mots de passe", "password", "mfa", "2fa"),
+            ("complexite", "historique", "verrouillage", "tentatives infructueuses", "brute force", "authentification"),
+            (),
+        ),
+        "PC-01": (
+            ("cab", "change advisory board", "deploiement", "mise en production", "rfc"),
+            ("approbation formelle", "sans validation", "rollback", "preuve de test", "validation cab"),
+            (),
+        ),
+        "PC-02": (
+            ("developpement", "dev", "production", "prod"),
+            ("separation des environnements", "acces cumules", "connexions simultanees", "simultane"),
+            (),
+        ),
+        "CO-01": (
+            ("sauvegarde", "backup", "backups"),
+            ("copie de sauvegarde", "offshore", "retention"),
+            (),
+        ),
+        "CO-02": (
+            ("incident", "incidents", "itsm", "helpdesk", "ticketing"),
+            ("sla", "cause racine", "rca", "escalade", "delai de resolution"),
+            (),
+        ),
+        "CO-03": (
+            ("prestataire", "prestations externalisees", "fournisseur", "third party"),
+            ("isae 3402", "soc 2", "sla", "kpi", "comite de pilotage", "comite de gouvernance", "second niveau"),
+            (),
+        ),
+        "CO-05": (
+            ("plan de reprise", "plan de continuite", "reprise apres sinistre", "continuite informatique"),
+            ("rpo", "rto", "basculement", "site de secours", "sinistre"),
+            (),
+        ),
+        "CO-07": (
+            ("restauration", "restore"),
+            ("procedure de restauration", "test de restauration", "restauration complete"),
+            (),
+        ),
+        "CO-08": (
+            ("patch", "correctif", "correctifs", "cve"),
+            ("vulnerabil", "cvss", "openssl", "patch management", "security patch"),
+            (),
+        ),
+    }
+
+    scores: dict[str, int] = {}
+    for reference, (title_markers, constat_markers, category_markers) in weighted_signals.items():
+        score = 0
+        score += _reference_signal_strength(title_text, title_markers) * 3
+        score += _reference_signal_strength(constat_text, constat_markers) * 2
+        score += _reference_signal_strength(category_text, category_markers)
+        if score:
+            scores[reference] = score
+    return scores
+
+
+def _resolve_effective_reference_with_reason(observation: AuditObservation) -> tuple[str, str]:
+    original = (observation.controle_ref or "").upper().strip()
+    original_valid = original in CONTROL_CATALOG
+    scores = _reference_scores(observation)
+
+    if original_valid:
+        scores[original] = scores.get(original, 0) + 3
+
+    if not scores:
+        if original_valid:
+            return original, "Original reference kept: no stronger keyword evidence was detected."
+        return original, "Original reference kept: no keyword evidence was available for remapping."
+
+    best_reference, best_score = max(scores.items(), key=lambda item: item[1])
+    original_score = scores.get(original, 0)
+    same_process = _reference_process(best_reference) == _reference_process(original)
+
+    if best_reference == original:
+        return original, "Original reference confirmed by keyword evidence in the observation."
+
+    if original_valid and not same_process and best_score < original_score + 3:
+        return original, f"Original reference kept to avoid cross-process over-remapping; strongest alternate signal was {best_reference}."
+
+    if original_valid and same_process and best_score < original_score + 2:
+        return original, f"Original reference kept because alternate evidence toward {best_reference} was not materially stronger."
+
+    if original_valid and best_score < 4:
+        return original, f"Original reference kept because the remapping evidence toward {best_reference} was too weak."
+
+    if original_valid:
+        return best_reference, f"Reference remapped from {original} to {best_reference} based on stronger keyword evidence in the title and observation details."
+    return best_reference, f"Reference inferred as {best_reference} because the original reference was missing or unsupported."
+
+
 def _normalize_process_codes(values: list[str]) -> list[str]:
     """
     Mission inputs sometimes carry human labels (e.g., "APD – Gestion des accès") instead of codes ("APD").
@@ -116,7 +338,10 @@ def _default_objectives(audit_input: StructuredAuditInput) -> list[str]:
 
 def _clean_sentence(text: str) -> str:
     value = " ".join((text or "").split())
-    value = value.replace("risque de risque de", "risque de").replace("..", ".").replace(" .", ".").replace(" ,", ",")
+    value = value.replace("risque de risque de", "risque de").replace(" .", ".").replace(" ,", ",")
+    while ".." in value:
+        value = value.replace("..", ".")
+    value = re.sub(r"\s+([.;:,])", r"\1", value)
     return normalize_french(value).strip()
 
 
@@ -160,7 +385,7 @@ def _derive_risk_impact(observation: AuditObservation) -> str:
     return "Acces non autorise, fraude ou indisponibilite des traitements."
 
 
-def _derive_business_impact(observation: AuditObservation) -> str:
+def _derive_business_impact(observation: AuditObservation, reference: str = "") -> str:
     explicit_impact = _first_non_empty(observation.impact_potentiel)
     if explicit_impact:
         return explicit_impact
@@ -171,9 +396,22 @@ def _derive_business_impact(observation: AuditObservation) -> str:
         observation.constat,
         observation.commentaire_auditeur,
     )
+    ref = (reference or observation.controle_ref or "").upper().strip()
 
-    if "post-depart" in text or "depart" in text or "actif" in text:
-        return "Fuite de donnees sensibles et utilisation frauduleuse des comptes."
+    if ref in {"APD-01", "APD-02", "APD-09"} or "post-depart" in text or "depart" in text or "actif" in text:
+        if any(k in text for k in ("fort encours", "operation", "mouvement", "virement", "client")):
+            return "Operations non legitimes ou consultation de donnees clients sensibles, avec perte de tracabilite sur des comptes a fort enjeu metier."
+        if any(k in text for k in ("paie", "remuneration", "donnees personnelles")):
+            return "Consultation ou modification non autorisee de donnees RH et de paie, avec exposition de donnees personnelles sensibles."
+        return "Utilisation non autorisee de comptes residuels, fuite de donnees sensibles et perte de responsabilisation des actions realisees."
+    if ref == "APD-03" or any(k in text for k in ("compte generique", "compte partage", "superuser", "teller_admin", "privilegie")):
+        return "Actions sensibles non attribuables individuellement, contournement possible de la segregation des taches et risque de manipulation non autorisee des operations ou parametres critiques."
+    if ref == "APD-04" or any(k in text for k in ("recertification", "fonctions incompatibles", "4 yeux", "quatre yeux")):
+        return "Maintien de droits excessifs ou incompatibles pouvant permettre la saisie et validation d'operations sans controle independant, notamment sur les processus metier sensibles."
+    if ref == "CO-05" or any(k in text for k in ("pra", "pca", "rpo", "rto", "basculement")):
+        return "Indisponibilite prolongee des services critiques et incapacite a confirmer le respect des objectifs RTO/RPO en cas de sinistre."
+    if ref == "CO-08" or any(k in text for k in ("patch", "correctif", "vulnerabil", "cve", "cvss")):
+        return "Exploitation potentielle de vulnerabilites connues, compromission de services exposes et interruption ou alteration de traitements clients."
     if "validation" in text or "autorisation" in text:
         return "Non-conformite aux procedures internes et atteinte a l'integrite des donnees."
     if "sauvegarde" in text or "restauration" in text or "backup" in text:
@@ -183,6 +421,141 @@ def _derive_business_impact(observation: AuditObservation) -> str:
     if "incident" in text:
         return "Interruption de service, non-respect des engagements et perte financiere."
     return "Perte financiere, non-conformite et atteinte a l'integrite des traitements."
+
+
+def _business_impact_is_generic(value: str) -> bool:
+    text = _keyword_text(value)
+    generic_markers = (
+        "fuite de donnees sensibles et utilisation frauduleuse des comptes",
+        "perte financiere non conformite",
+        "non conformite aux procedures internes",
+    )
+    return any(marker in text for marker in generic_markers)
+
+
+def _derive_risk_scenario(observation: AuditObservation, reference: str, fallback_risk: str = "") -> str:
+    application = observation.application or "l'application concernee"
+    text = _keyword_text(
+        reference,
+        observation.titre_observation,
+        observation.constat,
+        observation.categorie_controle,
+    )
+
+    if any(k in text for k in ("post-depart", "post depart", "apres depart", "depart")):
+        return _clean_sentence(
+            f"Le maintien de comptes actifs apres depart sur {application} expose l'entite a l'utilisation non autorisee "
+            "d'identifiants appartenant a d'anciens collaborateurs ou tiers n'intervenant plus sur le perimetre."
+        )
+    if any(k in text for k in ("compte generique", "compte partage", "superuser", "teller_admin", "privilegie")):
+        return _clean_sentence(
+            f"L'utilisation de comptes generiques ou privilegies sur {application} peut permettre l'execution d'actions sensibles "
+            "sans attribution individuelle fiable des responsabilites."
+        )
+    if any(k in text for k in ("recertification", "fonctions incompatibles", "4 yeux", "quatre yeux")):
+        return _clean_sentence(
+            f"L'absence de revue formelle des droits sur {application} peut maintenir des acces excessifs ou incompatibles avec les fonctions exercees."
+        )
+    if any(k in text for k in ("mot de passe", "mfa", "authentification", "verrouillage")):
+        return _clean_sentence(
+            f"Des parametres d'authentification insuffisants sur {application} augmentent la probabilite de compromission de comptes utilisateurs."
+        )
+    if any(k in text for k in ("cab", "changement", "mise en production", "rfc", "deploi")):
+        return _clean_sentence(
+            f"Des changements de production deployes sans validation formelle sur {application} peuvent introduire des modifications non maitrisees dans les traitements."
+        )
+    if any(k in text for k in ("pra", "pca", "restauration", "sauvegarde", "rpo", "rto")):
+        return _clean_sentence(
+            f"L'absence de tests complets de reprise ou de restauration sur {application} peut empecher le retablissement maitrise des services en cas d'incident majeur."
+        )
+    if any(k in text for k in ("incident", "itsm", "ticketing", "sla")):
+        return _clean_sentence(
+            f"Un processus incident insuffisamment outille ou formalise peut retarder l'escalade, la resolution et l'analyse des incidents affectant {application}."
+        )
+    if any(k in text for k in ("patch", "correctif", "vulnerabil", "cve", "cvss")):
+        return _clean_sentence(
+            f"Le retard de correction sur {application} maintient une exposition a des vulnerabilites connues pouvant etre exploitees."
+        )
+    return _clean_sentence(fallback_risk or _derive_risk_impact(observation))
+
+
+def _derive_control_impact(observation: AuditObservation, reference: str) -> str:
+    ref = (reference or "").upper().strip()
+    text = _keyword_text(reference, observation.titre_observation, observation.constat, observation.categorie_controle)
+    if ref.startswith("APD") or any(k in text for k in ("acces", "compte", "habilitation")):
+        return "Le dispositif de controle interne ne permet pas de garantir l'exhaustivite, la pertinence et la tracabilite du cycle de vie des habilitations."
+    if ref.startswith("PC") or any(k in text for k in ("changement", "production", "deploi")):
+        return "Le dispositif de gestion des changements ne garantit pas que les mises en production sont autorisees, testees et tracables avant de modifier l'environnement."
+    if ref.startswith("CO") or any(k in text for k in ("incident", "sauvegarde", "restauration", "pra", "patch")):
+        return "Le dispositif d'exploitation ne fournit pas une assurance suffisante sur la continuite, la supervision et la preuve d'execution des controles."
+    return "Le dispositif ITGC ne fournit pas une assurance suffisante sur la conception, l'execution et la tracabilite du controle attendu."
+
+
+def _derive_compliance_impact(observation: AuditObservation) -> str:
+    text = _keyword_text(observation.constat, observation.titre_observation, observation.commentaire_auditeur)
+    if any(k in text for k in ("bct", "circulaire", "nist", "iso", "isae", "soc 2", "reglement")):
+        return "La faiblesse peut exposer l'entite a un ecart vis-a-vis des exigences internes, reglementaires ou des bonnes pratiques explicitement citees dans le constat."
+    if any(k in text for k in ("donnees personnelles", "paie", "client", "confidentialite")):
+        return "La faiblesse peut accroitre l'exposition en matiere de confidentialite et de protection des donnees sensibles."
+    return ""
+
+
+def _derive_aggravating_factors(observation: AuditObservation) -> list[str]:
+    text = " ".join(
+        part.strip()
+        for part in [
+            observation.constat,
+            observation.commentaire_auditeur,
+            observation.procedure_compensatoire,
+            observation.application,
+        ]
+        if part and part.strip()
+    )
+    lowered = _keyword_text(text)
+    factors: list[str] = []
+
+    if _NUM_RE.search(text):
+        factors.append("Presence d'elements quantifies dans le constat, indiquant une exposition mesurable.")
+    if any(k in lowered for k in ("t24", "core banking", "swift", "openbanking", "paie")):
+        factors.append("Application ou processus sensible dans le perimetre audite.")
+    if any(k in lowered for k in ("fort encours", "client", "virement", "swift", "credit", "paie")):
+        factors.append("Exposition a des donnees ou operations metier sensibles.")
+    if any(k in lowered for k in ("connexion", "operation", "mouvement", "interactif", "simultanee")):
+        factors.append("Activite ou usage confirme au-dela d'une simple anomalie de parametrage.")
+    if any(k in lowered for k in ("aucun", "aucune", "absence", "non formalise", "sans workflow", "sans procedure")):
+        factors.append("Absence de procedure, de workflow ou de preuve formelle de controle.")
+    if any(k in lowered for k in ("pas d'accuse", "accuse de reception", "sans suivi", "exceptions")):
+        factors.append("Suivi des exceptions ou accuse de traitement insuffisamment formalise.")
+    return _deduplicate(factors)[:5]
+
+
+def _derive_root_cause(observation: AuditObservation, reference: str) -> str:
+    explicit = _first_non_empty(observation.cause_racine)
+    if explicit:
+        return explicit
+
+    text = _keyword_text(
+        reference,
+        observation.titre_observation,
+        observation.constat,
+        observation.procedure_compensatoire,
+        observation.commentaire_auditeur,
+    )
+    if any(k in text for k in ("post-depart", "post depart", "apres depart", "depart", "revocation")):
+        return "Absence de processus formalise, tracable et systematique de rapprochement entre mouvements RH et desactivation effective des comptes."
+    if any(k in text for k in ("compte generique", "compte partage", "privilegie", "superuser")):
+        return "Absence de gouvernance formelle des comptes generiques et privilegies, incluant justification, journalisation et revue periodique des usages."
+    if any(k in text for k in ("recertification", "revue des acces", "fonctions incompatibles")):
+        return "Absence de campagne formelle de recertification des droits et de suivi documente des corrections d'habilitations."
+    if any(k in text for k in ("mot de passe", "mfa", "authentification")):
+        return "Parametrage de securite insuffisamment aligne avec les exigences internes et les bonnes pratiques applicables."
+    if any(k in text for k in ("cab", "changement", "rfc", "mise en production")):
+        return "Processus de gestion des changements insuffisamment contraignant sur les validations, preuves de test et controles avant mise en production."
+    if any(k in text for k in ("pra", "pca", "restauration", "sauvegarde", "rpo", "rto")):
+        return "Absence de planification et de documentation suffisantes des tests de reprise ou de restauration sur les scenarios critiques."
+    if any(k in text for k in ("incident", "itsm", "ticketing", "sla")):
+        return "Absence d'un processus outille et formalise de gestion des incidents, incluant classification, escalade et analyse de cause racine."
+    return "Insuffisance de formalisation du controle attendu, des responsabilites, des preuves d'execution et du suivi des exceptions."
 
 
 def _expected_control_text(observation: AuditObservation) -> str:
@@ -247,27 +620,39 @@ def _auto_priority_justification(observation: AuditObservation, *, priority: str
         return ""
 
     priority_label = _format_priority(priority).lower()
+    application = (observation.application or "le perimetre concerne").strip()
+    reference = (observation.controle_ref or "").strip()
 
-    # Prefer a clean excerpt from the constat (first sentence-like chunk) instead of raw number dumps.
     excerpt = constat
     if "." in constat:
         excerpt = constat.split(".", 1)[0].strip()
     excerpt = _truncate_at_word_boundary(excerpt, 240).rstrip(".")
 
     lowered = _keyword_text(constat, observation.titre_observation, observation.categorie_controle)
-    if "aucun" in lowered or "aucune" in lowered or "absence" in lowered:
-        return _clean_sentence(
-            f"La priorite {priority_label} est justifiee par l'absence explicite de controle ou de preuve, telle que decrite dans le constat: {excerpt}."
-        )
-
     numbers = sorted(set(_NUM_RE.findall(constat)))
-    if numbers:
-        return _clean_sentence(
-            f"La priorite {priority_label} est justifiee par les elements factuels releves dans le constat, notamment: {excerpt}."
-        )
+    evidence_parts: list[str] = []
 
+    if numbers:
+        evidence_parts.append(f"des elements factuels ont ete releves ({', '.join(numbers[:3])})")
+    if any(k in lowered for k in ("absence", "aucun", "aucune", "non formalise", "non documente", "non supervise")):
+        evidence_parts.append("le dispositif de controle ou la preuve d'execution est absent ou insuffisamment formalise")
+    if any(k in lowered for k in ("compte generique", "compte partage", "shared", "superuser", "administrateur", "privileg")):
+        evidence_parts.append("des acces etendus ou non nominatifs sont maintenus")
+    if any(k in lowered for k in ("post depart", "apres depart", "depart")):
+        evidence_parts.append("des comptes restent actifs apres depart")
+    if any(k in lowered for k in ("operation", "transaction", "virement", "swift", "fort encours")):
+        evidence_parts.append("l'exposition porte sur des traitements sensibles")
+    if any(k in lowered for k in ("patch", "correctif", "cve", "vulnerabil")):
+        evidence_parts.append("des vulnerabilites connues demeurent exposees")
+    if any(k in lowered for k in ("pra", "pca", "drp", "restauration", "rto", "rpo")):
+        evidence_parts.append("la capacite de reprise ou de restauration n'est pas suffisamment demontree")
+    if any(k in lowered for k in ("incompatib", "sod", "separation des fonctions", "auto-valid")):
+        evidence_parts.append("des droits incompatibles ou des contournements de segregation des taches sont identifies")
+
+    evidence_clause = "; ".join(evidence_parts[:3]) if evidence_parts else f"le constat met en evidence l'ecart suivant: {excerpt}"
     return _clean_sentence(
-        f"La priorite {priority_label} est justifiee par la faiblesse de controle decrite dans le constat: {excerpt}."
+        f"La priorite {priority_label} retenue pour {application} au titre du controle {reference or 'considere'} est justifiee des lors que {evidence_clause}. "
+        f"Les faits releves montrent une exposition suffisamment significative pour qualifier ce point en priorite {priority_label}."
     )
 
 
@@ -319,6 +704,202 @@ def _catalog_recommendation(reference: str) -> str:
     return str(item.get("recommendation_guidance") or "").strip()
 
 
+def _recommendation_owner(observation: AuditObservation) -> str:
+    text = _keyword_text(observation.application, observation.titre_observation, observation.constat, observation.categorie_controle)
+    if any(k in text for k in ("rh", "paie", "hr access")):
+        return "les equipes RH et IT"
+    if any(k in text for k in ("swift", "banque en ligne", "openbanking", "t24", "core banking")):
+        return "les equipes IT et les responsables applicatifs"
+    if any(k in text for k in ("prestataire", "sopra", "ibs")):
+        return "la DSI et les responsables de la relation fournisseur"
+    return "la DSI et les responsables de processus concernes"
+
+
+def _recommendation_evidence(reference: str) -> str:
+    prefix = (reference or "").split("-", 1)[0].strip().upper()
+    if prefix == "APD":
+        return "conserver les validations, revues et journaux d'execution associes"
+    if prefix == "PC":
+        return "conserver les preuves de recette, d'approbation et de mise en production"
+    if prefix == "CO":
+        return "conserver les journaux, indicateurs, comptes rendus et preuves de tests associes"
+    return "conserver une piste d'audit complete des actions de remediation"
+
+
+def _build_contextual_recommendation(observation: AuditObservation, reference: str) -> str:
+    base = _catalog_recommendation(reference)
+    text = _keyword_text(
+        observation.application,
+        observation.titre_observation,
+        observation.constat,
+        observation.categorie_controle,
+        observation.impact_potentiel,
+    )
+    owner = _recommendation_owner(observation)
+    evidence = _recommendation_evidence(reference)
+
+    if reference == "APD-01":
+        return _clean_sentence(
+            f"Formaliser un processus de revocation des acces post-depart, pilote par {owner}, couvrant les applications critiques et les couches techniques associees. "
+            "Ce processus doit prevoir une notification RH systematique des departs, un delai cible de desactivation, un accuse de traitement par les equipes IT, "
+            f"un rapprochement periodique entre mouvements RH et comptes actifs, ainsi qu'un suivi documente des exceptions; {evidence}."
+        )
+    if reference == "APD-02":
+        return _clean_sentence(
+            "Formaliser et automatiser le processus de revocation des acces sur l'ensemble des couches applicatives et techniques a la suite des departs ou mobilites, "
+            f"avec suivi des comptes residuels, revue periodique et validation par {owner}; {evidence}."
+        )
+    if reference == "APD-03":
+        return _clean_sentence(
+            "Reduire strictement l'usage des comptes generiques ou privilegies, mettre en place des comptes nominatifs lorsque cela est possible, "
+            f"renforcer la journalisation et instaurer une revue periodique formelle des usages par {owner}; {evidence}."
+        )
+    if reference == "APD-04":
+        return _clean_sentence(
+            "Mettre en oeuvre une campagne formelle et periodique de recertification des acces couvrant l'exhaustivite des comptes, profils et droits sensibles, "
+            f"avec validation par les managers, correction des incompatibilites et suivi documente des plans d'action par {owner}; {evidence}."
+        )
+    if reference == "APD-05":
+        return _clean_sentence(
+            "Aligner la politique d'authentification sur les exigences internes et reglementaires en renforcant les parametres de mots de passe, "
+            f"en deployant des mecanismes de verrouillage et, lorsque pertinent, une authentification forte sur les operations sensibles; {evidence}."
+        )
+    if reference == "PC-01":
+        return _clean_sentence(
+            "Imposer qu'aucun changement ne soit deploye en production sans validation CAB ou approbation equivalente, preuve de test ou recette, "
+            f"analyse d'impact et plan de retour arriere, y compris pour les changements urgents; {evidence}."
+        )
+    if reference == "PC-02":
+        return _clean_sentence(
+            "Restreindre les acces cumules entre developpement, recette et production, formaliser les derogations strictement necessaires, "
+            f"et mettre en place une revue periodique des habilitations techniques par {owner}; {evidence}."
+        )
+    if reference in {"CO-01", "CO-05", "CO-07"}:
+        return _clean_sentence(
+            "Planifier et executer regulierement des tests de sauvegarde, restauration et reprise, documenter les resultats obtenus, "
+            f"traiter les ecarts constates au regard des objectifs RTO/RPO et maintenir a jour la documentation operative; {evidence}."
+        )
+    if reference == "CO-02":
+        return _clean_sentence(
+            "Structurer le pilotage des incidents via un outil de ticketing, des SLA par criticite, des escalades formelles et des analyses de cause racine, "
+            f"avec tableau de bord periodique de suivi a destination du management; {evidence}."
+        )
+    if reference == "CO-03":
+        return _clean_sentence(
+            "Formaliser la supervision des prestations externalisees au travers de SLA, KPI, comites de pilotage et controles de second niveau, "
+            f"et contractualiser les exigences de controle attendues vis-a-vis du prestataire; {evidence}."
+        )
+    if reference in {"CO-04", "CO-08"}:
+        return _clean_sentence(
+            "Mettre en place un pilotage renforce des configurations de securite et des correctifs, avec suivi par criticite, validation des exceptions, "
+            f"fenetres de maintenance definies et reporting periodique au management; {evidence}."
+        )
+
+    if base:
+        if any(k in text for k in ("absence", "aucun", "aucune", "non formalise", "non documente")):
+            return _clean_sentence(f"{base.rstrip('.')} et formaliser la frequence, les responsables et les preuves attendues d'execution.")
+        if any(k in text for k in ("plusieurs", "23", "11", "14", "%")):
+            return _clean_sentence(f"{base.rstrip('.')} avec un plan de remediation priorise sur les populations ou cas identifies, ainsi qu'un suivi formel des exceptions.")
+        return _clean_sentence(f"{base.rstrip('.')} sous pilotage de {owner}; {evidence}.")
+
+    if observation.controle_attendu:
+        return _clean_sentence(
+            f"Formaliser un dispositif permettant d'assurer le respect effectif du controle attendu, avec responsabilites definies, calendrier d'execution et preuves de realisation; {evidence}."
+        )
+
+    prefix = (reference or "").split("-", 1)[0].strip().upper()
+    if prefix == "APD":
+        return _clean_sentence(
+            f"Renforcer les controles d'acces via validation, revocation, revue periodique et supervision des exceptions, sous pilotage de {owner}; {evidence}."
+        )
+    if prefix == "PC":
+        return _clean_sentence(
+            f"Renforcer la gestion des changements en imposant validation, recette, traceabilite et segregation des roles avant mise en production; {evidence}."
+        )
+    if prefix == "CO":
+        return _clean_sentence(
+            f"Renforcer les controles d'exploitation en structurant la supervision, la continuite et la production des preuves de controle; {evidence}."
+        )
+    return _clean_sentence(
+        "Formaliser un plan de remediation cible avec responsabilites, echeances, controles de suivi et preuves d'execution."
+    )
+
+
+def _build_recommendation_objective(observation: AuditObservation, reference: str) -> str:
+    ref = (reference or "").upper().strip()
+    if ref.startswith("APD"):
+        return "Reduire durablement le risque d'acces non autorise en assurant une gestion exhaustive, rapide et tracable des habilitations."
+    if ref.startswith("PC"):
+        return "Garantir que les changements de production sont autorises, testes, tracables et conformes au niveau de risque metier."
+    if ref.startswith("CO"):
+        return "Renforcer la maitrise de l'exploitation informatique et la disponibilite des services critiques au moyen de controles documentes."
+    return "Renforcer la maitrise du controle interne IT et la tracabilite des actions correctives."
+
+
+def _build_recommendation_components(observation: AuditObservation, reference: str) -> dict[str, str | list[str]]:
+    owner = _recommendation_owner(observation)
+    evidence = _recommendation_evidence(reference)
+    ref = (reference or "").upper().strip()
+
+    if ref in {"APD-01", "APD-02", "APD-09"}:
+        immediate = "Desactiver les comptes residuels identifies et documenter la justification des exceptions maintenues temporairement."
+        structural = (
+            "Mettre en place un rapprochement RH/IT recurrent entre les mouvements de personnel et les comptes actifs, avec delai cible de traitement "
+            "et accuse de prise en charge par les equipes IT."
+        )
+        follow_up = "Suivre mensuellement les comptes post-depart, les delais de desactivation et les exceptions ouvertes jusqu'a regularisation."
+    elif ref == "APD-03":
+        immediate = "Revoir les comptes generiques ou privilegies identifies, supprimer les droits non justifies et documenter les usages maintenus."
+        structural = "Basculer vers des comptes nominatifs ou un dispositif PAM lorsque possible, avec journalisation et revue periodique des activites sensibles."
+        follow_up = "Produire une revue periodique des usages privilegies et des connexions atypiques, validee par le responsable applicatif."
+    elif ref == "APD-04":
+        immediate = "Lancer une revue ciblee des droits sensibles et corriger les cas de droits excessifs ou incompatibles identifies."
+        structural = "Instituer une campagne de recertification periodique couvrant comptes, profils et droits sensibles, avec validation manager/metier."
+        follow_up = "Suivre les validations, refus, corrections et exceptions dans un tableau de bord de remediations."
+    elif ref.startswith("PC"):
+        immediate = "Revoir les changements non conformes identifies et documenter a posteriori les validations, tests et risques residuels."
+        structural = "Bloquer les mises en production sans demande approuvee, preuve de recette, analyse d'impact et plan de retour arriere."
+        follow_up = "Suivre mensuellement le taux de changements deployes avec dossier complet et les exceptions validees."
+    elif ref in {"CO-01", "CO-05", "CO-07"}:
+        immediate = "Planifier un test cible de restauration ou de reprise sur le perimetre concerne et documenter les resultats."
+        structural = "Formaliser un calendrier de tests, des scenarios couvrant les applications critiques et les criteres d'acceptation RTO/RPO."
+        follow_up = "Presenter les resultats de tests, ecarts et plans d'action dans un comite de suivi IT/risques."
+    elif ref == "CO-02":
+        immediate = "Centraliser les incidents ouverts, qualifier leur criticite et documenter les analyses de cause racine des incidents majeurs."
+        structural = "Deployer ou formaliser un outil ITSM avec workflow, SLA par criticite, escalades et tableau de bord de pilotage."
+        follow_up = "Revoir periodiquement les delais de resolution, incidents recurrents et RCA non cloturees."
+    elif ref == "CO-08":
+        immediate = "Prioriser les correctifs critiques en retard et formaliser les exceptions de patching avec acceptation du risque."
+        structural = "Mettre en place un processus de patch management base sur la criticite, avec fenetres de maintenance et reporting."
+        follow_up = "Suivre les delais de correction par criticite et les vulnerabilites depassant les seuils internes."
+    else:
+        immediate = "Traiter les exceptions identifiees et documenter les actions correctives realisees."
+        structural = "Formaliser le controle attendu avec roles, frequence, criteres d'execution et preuves obligatoires."
+        follow_up = "Mettre en place un suivi periodique des exceptions, responsables et echeances de remediation."
+
+    evidence_expected = f"{evidence}; conserver les validations, dates de traitement, exceptions et resultats des revues."
+    steps = [
+        f"Action corrective immediate: {immediate}",
+        f"Action structurelle: {structural}",
+        f"Responsable: {owner}.",
+        f"Preuves attendues: {evidence_expected}",
+        f"Mecanisme de suivi: {follow_up}",
+    ]
+    return {
+        "immediate_action": _clean_sentence(immediate),
+        "structural_action": _clean_sentence(structural),
+        "owner": owner,
+        "evidence_expected": _clean_sentence(evidence_expected),
+        "follow_up_mechanism": _clean_sentence(follow_up),
+        "steps": [_clean_sentence(step) for step in steps],
+    }
+
+
+def _build_recommendation_v2(observation: AuditObservation) -> str:
+    ref = (observation.controle_ref or "").upper()
+    return _build_contextual_recommendation(observation, ref)
+
+
 def _build_recommendation(observation: AuditObservation) -> str:
     explicit_recommendation = _first_non_empty(observation.recommandation_proposee)
     if explicit_recommendation:
@@ -356,7 +937,7 @@ def _build_management_summary(
 ) -> str:
     application = observation.application or "l'application concernee"
     constat = observation.constat.rstrip(".")
-    impact_value = (impact or _derive_business_impact(observation)).rstrip(".")
+    impact_value = (impact or _derive_business_impact(observation, observation.controle_ref)).rstrip(".")
     risk_value = (risk or _derive_risk_impact(observation)).rstrip(".")
     cause_clause = f" La cause racine probable identifiee est: {root_cause.rstrip('.') }." if root_cause else ""
     justification_clause = f" Justification: {priority_justification.rstrip('.') }." if priority_justification else ""
@@ -456,6 +1037,11 @@ def _resolve_effective_reference(observation: AuditObservation) -> str:
     return original
 
 
+def _resolve_effective_reference_v2(observation: AuditObservation) -> str:
+    resolved_reference, _reason = _resolve_effective_reference_with_reason(observation)
+    return resolved_reference
+
+
 def _looks_like_fact_restatement(candidate: str, observation: AuditObservation) -> bool:
     text = " ".join((candidate or "").split()).strip()
     if not text:
@@ -531,7 +1117,138 @@ def _moderate_priority(reference: str, observation: AuditObservation, priority: 
     return "Critical" if hard_critical else "High"
 
 
-def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[DetailedFinding]:
+def _moderate_priority_v2(reference: str, observation: AuditObservation, priority: str) -> str:
+    if priority != "Critical":
+        return priority
+
+    text = _keyword_text(
+        reference,
+        observation.titre_observation,
+        observation.constat,
+        observation.application,
+        observation.categorie_controle,
+        observation.impact_potentiel,
+    )
+    amount = 0.0
+    try:
+        amount = max([float(value) for value in _NUM_RE.findall(observation.constat or "")] or [0.0])
+    except Exception:
+        amount = 0.0
+
+    sensitivity_markers = (
+        "t24",
+        "core banking",
+        "swift",
+        "openbanking",
+        "banque en ligne",
+        "paie",
+        "payroll",
+        "client",
+    )
+    hard_critical = False
+    if any(marker in text for marker in ("post-depart", "post depart", "apres depart", "depart")) and any(marker in text for marker in ("connexion", "connexions", "telecharg", "download", "exfil", "operation", "transaction", "mouvement")):
+        hard_critical = True
+    if any(marker in text for marker in ("sod", "separation des fonctions", "incompatib", "validation paiement", "paiement", "credit", "virement", "swift")) and amount >= 20:
+        hard_critical = True
+    if (reference or "").upper().strip() in {"CO-01", "CO-05", "CO-07"} and any(marker in text for marker in ("aucun test", "non teste", "pas teste")) and any(marker in text for marker in ("finance", "sap", "erp", "paiement", "t24", "core banking")):
+        hard_critical = True
+    if any(marker in text for marker in ("vulnerabilite critique", "sql injection", "escalade de privil", "cve", "cvss")) and any(marker in text for marker in ("openbanking", "banque en ligne", "client")):
+        hard_critical = True
+    if any(marker in text for marker in ("superuser", "compte generique", "shared", "partage")) and any(marker in text for marker in ("validation", "annulation", "virement", "swift")):
+        hard_critical = True
+    if any(marker in text for marker in sensitivity_markers) and amount >= 50:
+        hard_critical = True
+
+    return "Critical" if hard_critical else "High"
+
+
+def _priority_trigger_reasons(reference: str, observation: AuditObservation) -> list[str]:
+    ref = (reference or "").upper().strip()
+    text = _keyword_text(
+        reference,
+        observation.titre_observation,
+        observation.constat,
+        observation.application,
+        observation.categorie_controle,
+        observation.impact_potentiel,
+    )
+    reasons: list[str] = []
+
+    if any(marker in text for marker in ("post-depart", "post depart", "apres depart", "ancien collaborateur", "ancien prestataire")):
+        reasons.append("post-departure or expired-contractor accounts remained active")
+    if any(marker in text for marker in ("prestataire", "consultant", "fin de mission", "contrat expire")) and any(marker in text for marker in ("compte", "acces", "droits")):
+        reasons.append("third-party access lifecycle controls did not enforce timely revocation")
+    if any(marker in text for marker in ("operation", "transaction", "mouvement", "virement", "swift")) and any(marker in text for marker in ("post-depart", "post depart", "superuser", "compte generique", "compte partage")):
+        reasons.append("sensitive banking operations were possible through uncontrolled access")
+    if any(marker in text for marker in ("superuser", "compte generique", "compte partage", "privilegie")):
+        reasons.append("privileged or shared accounts were not sufficiently controlled")
+    if any(marker in text for marker in ("recertification", "revue periodique", "fonctions incompatibles", "4 yeux", "quatre yeux")):
+        reasons.append("access recertification or segregation-of-duties controls were ineffective")
+    if ref.startswith("PC-") or any(marker in text for marker in ("cab", "change advisory board", "mise en production")):
+        reasons.append("production changes lacked formal approval or release governance")
+    if any(marker in text for marker in ("developpement", "dev")) and any(marker in text for marker in ("production", "prod", "acces cumules")):
+        reasons.append("segregation between development and production was weakened")
+    if ref in {"CO-01", "CO-05", "CO-07"} or any(marker in text for marker in ("plan de reprise", "plan de continuite", "site de secours", "test de restauration", "procedure de restauration", "rpo", "rto")):
+        reasons.append("resilience and recovery controls were not tested or not fully documented")
+    if ref == "CO-08" or any(marker in text for marker in ("cve", "cvss", "vulnerabil", "security patch", "patch management")):
+        reasons.append("known security vulnerabilities remained exposed beyond policy timelines")
+    if ref == "CO-02" or any(marker in text for marker in ("ticketing", "helpdesk", "itsm", "cause racine", "rca")):
+        reasons.append("incident response governance and traceability were insufficient")
+    if any(marker in text for marker in ("mot de passe", "mots de passe", "password", "mfa", "2fa", "brute force", "tentatives suspectes")):
+        reasons.append("authentication controls were insufficient for the sensitivity of the exposed service")
+    if ref == "CO-03" or any(marker in text for marker in ("isae 3402", "soc 2", "sla", "kpi", "second niveau", "comite de pilotage", "comite de gouvernance")):
+        reasons.append("third-party oversight and service control evidence were insufficient")
+
+    return _deduplicate(reasons)
+
+
+def _priority_decision_mode(
+    *,
+    base_priority: str,
+    llm_priority_used: bool,
+    enforced_priority: str,
+    final_priority: str,
+) -> str:
+    parts = ["llm_validated" if llm_priority_used else "deterministic_fallback"]
+    if enforced_priority != base_priority:
+        parts.append("hard_floor_override")
+    if final_priority != enforced_priority:
+        parts.append("priority_moderation")
+    return "+".join(parts)
+
+
+def _recommendation_decision_mode(*, reasoning_ok: bool, recommendation_valid: bool) -> str:
+    if reasoning_ok and recommendation_valid:
+        return "llm_validated"
+    return "contextual_fallback"
+
+
+def _build_escalation_reason(
+    *,
+    observation: AuditObservation,
+    reference: str,
+    base_priority: str,
+    final_priority: str,
+    llm_priority_used: bool,
+) -> str:
+    reasons = _priority_trigger_reasons(reference, observation)
+    if not reasons:
+        reasons = ["overall exposure remains aligned with the detected control failure and impacted scope"]
+
+    source_label = "validated LLM reasoning" if llm_priority_used else "deterministic fallback rules"
+    joined_reasons = "; ".join(reasons[:3])
+
+    if final_priority != base_priority:
+        return f"Priority escalated from {base_priority} to {final_priority} by {source_label} because {joined_reasons}."
+    return f"Priority set to {final_priority} by {source_label} because {joined_reasons}."
+
+
+def _build_detailed_findings(
+    audit_input: StructuredAuditInput,
+    *,
+    generated_at: str = "",
+    report_version: str = "",
+) -> list[DetailedFinding]:
     findings: list[DetailedFinding] = []
 
     reasoning_map = {}
@@ -550,14 +1267,25 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
         if not _is_reportable_observation(observation):
             continue
 
-        effective_reference = _resolve_effective_reference(observation)
+        original_reference = (observation.controle_ref or "").upper().strip()
+        effective_reference, resolved_reference_reason = _resolve_effective_reference_with_reason(observation)
         reasoning = reasoning_map.get(observation.observation_id)
         priority_reasoning = priority_reasoning_map.get(observation.observation_id)
         inferred_risk = (reasoning.risk if reasoning else "").strip()
+        inferred_risk_scenario = (reasoning.risk_scenario if reasoning else "").strip()
         inferred_impact = (reasoning.impact if reasoning else "").strip()
-        inferred_root_cause = (reasoning.root_cause if reasoning else "").strip() or _first_non_empty(observation.cause_racine)
+        inferred_business_impact = (reasoning.business_impact if reasoning else "").strip()
+        inferred_control_impact = (reasoning.control_impact if reasoning else "").strip()
+        inferred_compliance_impact = (reasoning.compliance_impact if reasoning else "").strip()
+        inferred_root_cause = (reasoning.root_cause if reasoning else "").strip() or _derive_root_cause(observation, effective_reference)
+        inferred_aggravating_factors = (reasoning.aggravating_factors if reasoning else []) or []
         inferred_recommendation = (reasoning.recommendation if reasoning else "").strip()
         inferred_objective = (reasoning.recommendation_objective if reasoning else "").strip()
+        inferred_immediate_action = (reasoning.immediate_action if reasoning else "").strip()
+        inferred_structural_action = (reasoning.structural_action if reasoning else "").strip()
+        inferred_owner = (reasoning.owner if reasoning else "").strip()
+        inferred_evidence_expected = (reasoning.evidence_expected if reasoning else "").strip()
+        inferred_follow_up_mechanism = (reasoning.follow_up_mechanism if reasoning else "").strip()
         inferred_steps = (reasoning.recommendation_steps if reasoning else []) or []
         inferred_justification = (reasoning.priority_justification if reasoning else "").strip()
 
@@ -587,9 +1315,20 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
         if _looks_like_fact_restatement(risk_text, observation):
             risk_text = _derive_risk_impact(observation)
 
-        impact_text = inferred_impact or _derive_business_impact(observation)
+        impact_text = inferred_impact or _derive_business_impact(observation, effective_reference)
         if _looks_like_fact_restatement(impact_text, observation):
-            impact_text = _derive_business_impact(observation)
+            impact_text = _derive_business_impact(observation, effective_reference)
+
+        risk_scenario = inferred_risk_scenario or _derive_risk_scenario(observation, effective_reference, risk_text)
+        deterministic_business_impact = _derive_business_impact(observation, effective_reference)
+        business_impact = inferred_business_impact or impact_text
+        if _business_impact_is_generic(business_impact) or (effective_reference in {"APD-01", "APD-03", "APD-04", "CO-05", "CO-08"} and inferred_business_impact):
+            business_impact = deterministic_business_impact
+        control_impact = inferred_control_impact or _derive_control_impact(observation, effective_reference)
+        compliance_impact = inferred_compliance_impact or _derive_compliance_impact(observation)
+        aggravating_factors = [
+            str(item).strip() for item in (inferred_aggravating_factors or _derive_aggravating_factors(observation)) if str(item).strip()
+        ]
         # Recommendation pipeline:
         # 1) LLM recommendation as the default.
         # 2) Validate recommendation coherence (vs control_ref) and specificity.
@@ -604,11 +1343,27 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
             reco_ok = validation.ok
 
         if not reco_ok:
-            recommendation_text = _build_recommendation(observation.model_copy(update={"controle_ref": effective_reference}))
+            recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": effective_reference}))
             reco_objective = ""
             reco_steps = []
 
-        priority = classify_priority(
+        reco_components = _build_recommendation_components(observation, effective_reference)
+        immediate_action = inferred_immediate_action or str(reco_components["immediate_action"])
+        structural_action = inferred_structural_action or str(reco_components["structural_action"])
+        owner = inferred_owner or str(reco_components["owner"])
+        evidence_expected = inferred_evidence_expected or str(reco_components["evidence_expected"])
+        follow_up_mechanism = inferred_follow_up_mechanism or str(reco_components["follow_up_mechanism"])
+        if not reco_objective:
+            reco_objective = _build_recommendation_objective(observation, effective_reference)
+        if not reco_steps:
+            reco_steps = list(reco_components["steps"])  # type: ignore[arg-type]
+
+        recommendation_mode = _recommendation_decision_mode(
+            reasoning_ok=reasoning_ok and bool(inferred_recommendation.strip()),
+            recommendation_valid=reco_ok,
+        )
+
+        base_priority = classify_priority(
             {
                 "controle_ref": effective_reference,
                 "reference": effective_reference,
@@ -620,11 +1375,13 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
                 "recommendation": recommendation_text,
             }
         )
+        priority = base_priority
         if priority_reasoning_ok and inferred_priority in VALID_PRIORITIES:
             priority = inferred_priority
+        priority_before_enforcement = priority
 
         # Final hard-minimum override layer.
-        priority = enforce_min_priority(
+        enforced_priority = enforce_min_priority(
             {
                 "controle_ref": effective_reference,
                 "reference": effective_reference,
@@ -636,7 +1393,20 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
             },
             priority,
         )
-        priority = _moderate_priority(effective_reference, observation, priority)
+        priority = _moderate_priority_v2(effective_reference, observation, enforced_priority)
+        priority_mode = _priority_decision_mode(
+            base_priority=priority_before_enforcement,
+            llm_priority_used=priority_reasoning_ok and inferred_priority in VALID_PRIORITIES,
+            enforced_priority=enforced_priority,
+            final_priority=priority,
+        )
+        escalation_reason = _build_escalation_reason(
+            observation=observation,
+            reference=effective_reference,
+            base_priority=priority_before_enforcement,
+            final_priority=priority,
+            llm_priority_used=priority_reasoning_ok and inferred_priority in VALID_PRIORITIES,
+        )
 
         # Prefer LLM justification if it passed evidence validation AND the final priority matches it.
         if priority_reasoning_ok and inferred_priority_justification and inferred_priority == priority:
@@ -648,14 +1418,61 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
         if priority in {"Critical", "High"}:
             validation = validate_recommendation(observation.model_copy(update={"controle_ref": effective_reference}), recommendation_text)
             if (not validation.ok) or "recommendation_generic" in (validation.issues or []):
-                recommendation_text = _build_recommendation(observation.model_copy(update={"controle_ref": effective_reference}))
-                reco_objective = ""
-                reco_steps = []
+                recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": effective_reference}))
+                reco_objective = _build_recommendation_objective(observation, effective_reference)
+                reco_steps = list(reco_components["steps"])  # type: ignore[arg-type]
+                reco_ok = False
+
+        traceability = FindingTraceability(
+            observation_source_id=observation.observation_id,
+            original_reference=original_reference,
+            resolved_reference=effective_reference,
+            fields_used=[
+                "observation_id",
+                "controle_ref",
+                "titre_observation",
+                "constat",
+                "application",
+                "categorie_controle",
+                "impact_potentiel",
+                "cause_racine",
+                "recommandation_proposee",
+                "commentaire_auditeur",
+                "references_probantes",
+                "statut_validation",
+            ],
+            source_documents=_traceability_sources(observation),
+            heuristic_rules_triggered=_traceability_rule_markers(
+                observation,
+                original_reference=original_reference,
+                resolved_reference=effective_reference,
+                priority_mode=priority_mode,
+                recommendation_mode=recommendation_mode,
+                reasoning_ok=reasoning_ok,
+                priority_reasoning_ok=priority_reasoning_ok,
+                final_priority=priority,
+            ),
+            confidence_score=_traceability_confidence(
+                reasoning_ok=reasoning_ok,
+                priority_reasoning_ok=priority_reasoning_ok,
+                recommendation_valid=reco_ok,
+                priority=priority,
+                priority_justification=priority_justification,
+            ),
+            priority_justification=priority_justification,
+            priority_decision_mode=priority_mode,
+            recommendation_decision_mode=recommendation_mode,
+            agent="report_agent",
+            generated_at=generated_at,
+            report_version=report_version,
+        )
 
         findings.append(
             DetailedFinding(
                 observation_id=observation.observation_id,
+                original_reference=original_reference,
                 reference=effective_reference,
+                resolved_reference_reason=resolved_reference_reason,
                 domain=observation.domaine_controle,
                 category=observation.categorie_controle,
                 application=observation.application,
@@ -671,13 +1488,26 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
                 finding=observation.constat,
                 compensating_procedure=observation.procedure_compensatoire,
                 risk_impact=risk_text,
+                risk_scenario=risk_scenario,
                 impact_detail=impact_text,
+                business_impact=business_impact,
+                control_impact=control_impact,
+                compliance_impact=compliance_impact,
                 root_cause=inferred_root_cause,
+                aggravating_factors=aggravating_factors,
                 recommendation=recommendation_text,
                 recommendation_objective=reco_objective,
+                immediate_action=immediate_action,
+                structural_action=structural_action,
+                owner=owner,
+                evidence_expected=evidence_expected,
+                follow_up_mechanism=follow_up_mechanism,
                 recommendation_steps=[step for step in (reco_steps or []) if step and str(step).strip()],
+                recommendation_decision_mode=recommendation_mode,
                 priority=priority,
                 priority_justification=priority_justification,
+                priority_decision_mode=priority_mode,
+                escalation_reason=escalation_reason,
                 auditor_comment=observation.commentaire_auditeur,
                 management_summary=_build_management_summary(
                     observation.model_copy(update={"controle_ref": effective_reference}),
@@ -687,6 +1517,7 @@ def _build_detailed_findings(audit_input: StructuredAuditInput) -> list[Detailed
                     root_cause=inferred_root_cause,
                     priority_justification=priority_justification,
                 ),
+                traceability=traceability,
             )
         )
     return sorted(findings, key=lambda item: (_priority_rank(item.priority), item.reference, item.application, item.layer))
@@ -737,7 +1568,7 @@ def _scoped_control_references(audit_input: StructuredAuditInput) -> list[str]:
 
     observed_refs: list[str] = []
     for observation in audit_input.observations:
-        reference = _resolve_effective_reference(observation)
+        reference = _resolve_effective_reference_v2(observation)
         if reference and reference not in scoped and reference not in observed_refs:
             observed_refs.append(reference)
 
@@ -755,7 +1586,7 @@ def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[Deta
 
     observed_refs: dict[str, AuditObservation] = {}
     for observation in audit_input.observations:
-        ref = _resolve_effective_reference(observation)
+        ref = _resolve_effective_reference_v2(observation)
         if ref and ref not in observed_refs:
             observed_refs[ref] = observation.model_copy(update={"controle_ref": ref})
 
@@ -779,7 +1610,7 @@ def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[Deta
                     overall_priority = finding.priority
 
         for observation in audit_input.observations:
-            effective_ref = _resolve_effective_reference(observation)
+            effective_ref = _resolve_effective_reference_v2(observation)
             if effective_ref != reference:
                 continue
             application = (observation.application or "").strip()
@@ -1185,8 +2016,8 @@ def recalculate_audit_input_priorities(
                 update={
                     "priority": finding.priority,
                     "priority_justification": finding.priority_justification,
-                    "priority_reason": "generated_pipeline",
-                    "priority_source": "generated_pipeline",
+                    "priority_reason": finding.escalation_reason or finding.priority_justification or "generated_pipeline",
+                    "priority_source": finding.priority_decision_mode or "generated_pipeline",
                     "recommandation_proposee": finding.recommendation,
                     "cause_racine": finding.root_cause or observation.cause_racine,
                     "impact_potentiel": finding.impact_detail or observation.impact_potentiel,
@@ -1200,7 +2031,9 @@ def recalculate_audit_input_priorities(
 
 def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput:
     mission = audit_input.mission
-    findings = _build_detailed_findings(audit_input)
+    generated_at = _utc_timestamp()
+    report_version = f"{mission.mission_id or 'mission'}:{generated_at}"
+    findings = _build_detailed_findings(audit_input, generated_at=generated_at, report_version=report_version)
     general_synthesis, executive_summary, conclusion = _build_general_synthesis(findings, audit_input)
     maturity_level = _derive_maturity_level(findings)
     transversal_initiatives = _build_transversal_initiatives(findings)
@@ -1208,7 +2041,7 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
     # Covered controls: include catalog controls for the mission + any observed control refs not in the catalog.
     observed_refs: dict[str, AuditObservation] = {}
     for obs in audit_input.observations:
-        ref = _resolve_effective_reference(obs)
+        ref = _resolve_effective_reference_v2(obs)
         if ref and ref not in observed_refs:
             observed_refs[ref] = obs.model_copy(update={"controle_ref": ref})
 
@@ -1241,20 +2074,13 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
     covered_controls = sorted(covered_controls, key=lambda c: (c.process or "", c.reference))
 
     table_of_contents = [
-        "Préambule",
-        "Objectifs",
-        "Périmètre",
-        "Intervenants",
-        "Approche d’audit",
-        "Liste des contrôles",
-        "Synthèse contrôle × application",
+        "Cadre de notre intervention et démarche",
         "Synthèse générale",
-        "Synthèse des priorités",
-        "Points relevés",
-        "Recommandations",
+        "Recommandations détaillées",
+        "Annexes",
     ]
 
-    return AuditReportOutput(
+    report_output = AuditReportOutput(
         cover_title=mission.titre_mission or "Rapport d'audit IT",
         cover_subtitle="Version projet",
         client_name=mission.entite_auditee,
@@ -1289,3 +2115,5 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
         executive_summary=executive_summary,
         conclusion=conclusion,
     )
+    report_output.quality_gate = evaluate_report_quality_gate(audit_input, report_output)
+    return report_output

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardList, MessageSquareQuote, Sparkles, Star } from 'lucide-react';
+import { useAuthContext } from '../context/AuthContext';
 import { useMissionContext } from '../context/MissionContext';
 import type { CreateFeedbackPayload, FeedbackCategory, FeedbackSentiment } from '../types';
 
@@ -20,13 +21,12 @@ const sentimentOptions: Array<{ value: FeedbackSentiment; label: string }> = [
 ];
 
 const emptyForm: CreateFeedbackPayload = {
-  scope: 'mission',
+  scope: 'report',
   rating: 4,
   sentiment: 'neutral',
   categories: ['report_quality'],
   comment: '',
-  requires_action: true,
-  author: 'Camille Dupont'
+  requires_action: true
 };
 
 const formatDate = (value: string) => {
@@ -39,10 +39,12 @@ const formatDate = (value: string) => {
 };
 
 export default function FeedbackPage() {
+  const { user } = useAuthContext();
   const { activeMission, activeMissionFeedback, submitFeedback, updateFeedbackStatus, loadingFeedback } = useMissionContext();
   const [form, setForm] = useState<CreateFeedbackPayload>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [statusUpdateId, setStatusUpdateId] = useState<string | null>(null);
+  const fallbackAuthor = user?.display_name || user?.email || 'Authenticated user';
 
   const averageRating = useMemo(() => {
     if (activeMissionFeedback.length === 0) return null;
@@ -116,13 +118,13 @@ export default function FeedbackPage() {
         <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Quality loop</p>
         <h1 className="text-3xl font-semibold text-slate-900">Auditor feedback</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Capture what works, what needs review, and the concrete improvement requests for the active mission.
+          Capture what works, what needs review, and concrete improvement requests for the generated report.
         </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
-          <p className="text-sm text-slate-500">Mission feedbacks</p>
+          <p className="text-sm text-slate-500">Report feedbacks</p>
           <p className="mt-3 text-3xl font-semibold text-slate-900">{activeMissionFeedback.length}</p>
         </div>
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card">
@@ -214,41 +216,13 @@ export default function FeedbackPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Feedback scope</span>
-                <select
-                  value={form.scope}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      scope: event.target.value as CreateFeedbackPayload['scope']
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-                >
-                  <option value="mission">Mission</option>
-                  <option value="report">Report</option>
-                  <option value="observation">Observation</option>
-                </select>
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Author</span>
-                <input
-                  value={form.author ?? ''}
-                  onChange={(event) => setForm((current) => ({ ...current, author: event.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
-                />
-              </label>
-            </div>
-
             <label className="space-y-2">
               <span className="text-sm font-semibold text-slate-700">Comment</span>
               <textarea
                 rows={6}
                 value={form.comment}
                 onChange={(event) => setForm((current) => ({ ...current, comment: event.target.value }))}
-                placeholder="What was strong, what felt weak, and what should be improved next?"
+                placeholder="What should be improved in the report quality, priority logic, recommendations, PPT design, or data accuracy?"
                 className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900"
               />
             </label>
@@ -315,7 +289,7 @@ export default function FeedbackPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                            {entry.scope || 'mission'}
+                            {entry.scope || 'report'}
                           </span>
                           <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
                             {entry.status}
@@ -323,7 +297,7 @@ export default function FeedbackPage() {
                         </div>
                         <p className="mt-3 text-sm text-slate-900">{entry.comment || 'No comment provided.'}</p>
                         <p className="mt-2 text-xs text-slate-500">
-                          {formatDate(entry.created_at)} - {entry.author || 'Unknown author'}
+                          {formatDate(entry.created_at)} - {entry.author || fallbackAuthor}
                         </p>
                       </div>
 

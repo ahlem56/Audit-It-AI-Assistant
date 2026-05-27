@@ -4,19 +4,26 @@ import {
   getMission,
   getMissionObservations,
   getMissionReportPreview,
+  getMissionQualityGate,
   createMission,
   createMissionFromExcel as createMissionFromExcelApi,
   updateMission,
   deleteMission as deleteMissionApi,
+  inviteAuditorToMission,
   uploadMissionExcel,
   updateMissionObservations,
   recalculateMissionPriorities,
   regenerateMissionReportPreview,
   exportMissionReportPptx,
+  exportMissionReportPdf,
+  exportMissionReportDocx,
+  getMissionReportEmailDefaults,
+  sendMissionReportEmail,
   sendMissionAssistantMessage,
   getMissionFeedbacks,
   createMissionFeedback,
-  updateMissionFeedbackStatus as updateMissionFeedbackStatusApi
+  updateMissionFeedbackStatus as updateMissionFeedbackStatusApi,
+  ingestM365DriveItem
 } from '../services/api';
 import type {
   AuditorFeedback,
@@ -25,10 +32,15 @@ import type {
   Observation,
   ParsedMissionContext,
   ReportPreview,
+  MissionQualityGateResult,
   ChatMessage,
   CreateMissionPayload,
   UpdateMissionPayload,
-  AssistantMessagePayload
+  AssistantMessagePayload,
+  ReportEmailDefaults,
+  SendReportEmailPayload,
+  SendReportEmailResult,
+  M365DriveItem
 } from '../types';
 
 interface MissionContextValue {
@@ -48,6 +60,8 @@ interface MissionContextValue {
   // Report
   reportPreview: ReportPreview | null;
   loadingReport: boolean;
+  qualityGate: MissionQualityGateResult | null;
+  loadingQualityGate: boolean;
 
   // Chat
   chatHistory: ChatMessage[];
@@ -64,14 +78,21 @@ interface MissionContextValue {
   createNewMission: (payload: CreateMissionPayload) => Promise<Mission>;
   createMissionFromExcel: (file: File) => Promise<Mission>;
   deleteExistingMission: (missionId: string) => Promise<void>;
+  inviteAuditor: (missionId: string, auditorEmail: string) => Promise<Mission>;
   updateActiveMission: (payload: UpdateMissionPayload) => Promise<void>;
   uploadExcel: (file: File) => Promise<void>;
+  importM365DriveItem: (item: M365DriveItem) => Promise<void>;
   loadObservations: () => Promise<void>;
   updateObservations: (observations: Observation[]) => Promise<void>;
   recalculatePriorities: () => Promise<void>;
   loadReportPreview: () => Promise<void>;
+  loadQualityGate: () => Promise<void>;
   regenerateReportPreview: () => Promise<void>;
   exportReportPptx: () => Promise<Blob>;
+  exportReportPdf: () => Promise<Blob>;
+  exportReportDocx: () => Promise<Blob>;
+  getReportEmailDefaults: () => Promise<ReportEmailDefaults>;
+  sendReportEmail: (payload: SendReportEmailPayload) => Promise<SendReportEmailResult>;
   sendAssistantMessage: (payload: AssistantMessagePayload) => Promise<void>;
   loadFeedback: () => Promise<void>;
   submitFeedback: (payload: CreateFeedbackPayload) => Promise<AuditorFeedback | null>;
@@ -96,6 +117,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
 
   const [reportPreview, setReportPreview] = useState<ReportPreview | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [qualityGate, setQualityGate] = useState<MissionQualityGateResult | null>(null);
+  const [loadingQualityGate, setLoadingQualityGate] = useState(false);
 
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(false);
@@ -107,9 +130,20 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     try {
       const data = await getMissions();
       setMissions(data);
+      setActiveMissionIdState((current) => {
+        const nextId =
+          current && data.some((mission) => mission.mission_id === current)
+            ? current
+            : data[0]?.mission_id ?? null;
+
+        localStorage.setItem('activeMissionId', nextId || '');
+        return nextId;
+      });
     } catch (error) {
       console.error('Failed to load missions:', error);
       setMissions([]);
+      setActiveMissionIdState(null);
+      localStorage.setItem('activeMissionId', '');
     } finally {
       setLoadingMissions(false);
     }
@@ -125,6 +159,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       setObservations([]);
       setParsedMission(null);
       setReportPreview(null);
+      setQualityGate(null);
       setChatHistory([]);
       setFeedbackEntries([]);
     }
@@ -135,9 +170,19 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     try {
       const mission = await getMission(id);
       setActiveMission(mission);
+      setMissions((prev) =>
+        prev.some((entry) => entry.mission_id === id)
+          ? prev.map((entry) => (entry.mission_id === id ? mission : entry))
+          : [mission, ...prev]
+      );
     } catch (error) {
       console.error('Failed to load mission:', error);
       setActiveMission(null);
+      setActiveMissionIdState((current) => {
+        if (current !== id) return current;
+        localStorage.setItem('activeMissionId', '');
+        return null;
+      });
     } finally {
       setLoadingMission(false);
     }
@@ -164,6 +209,15 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const inviteAuditor = async (missionId: string, auditorEmail: string): Promise<Mission> => {
+    const updated = await inviteAuditorToMission(missionId, auditorEmail);
+    setMissions((prev) => prev.map((mission) => (mission.mission_id === missionId ? updated : mission)));
+    if (activeMissionId === missionId) {
+      setActiveMission(updated);
+    }
+    return updated;
+  };
+
   const updateActiveMission = async (payload: UpdateMissionPayload) => {
     if (!activeMissionId) return;
     const updated = await updateMission(activeMissionId, payload);
@@ -181,6 +235,20 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       setUploadState({ uploading: false, error: null });
     } catch (error) {
       setUploadState({ uploading: false, error: error instanceof Error ? error.message : 'Upload failed' });
+      throw error;
+    }
+  };
+
+  const importM365DriveItem = async (item: M365DriveItem) => {
+    if (!activeMissionId) return;
+    setUploadState({ uploading: true, error: null });
+    try {
+      await ingestM365DriveItem(activeMissionId, item);
+      await loadActiveMission(activeMissionId);
+      await loadObservations();
+      setUploadState({ uploading: false, error: null });
+    } catch (error) {
+      setUploadState({ uploading: false, error: error instanceof Error ? error.message : 'Microsoft 365 import failed' });
       throw error;
     }
   };
@@ -229,11 +297,26 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     try {
       const data = await getMissionReportPreview(activeMissionId);
       setReportPreview(data);
+      await loadActiveMission(activeMissionId);
     } catch (error) {
       console.error('Failed to load report preview:', error);
       setReportPreview(null);
     } finally {
       setLoadingReport(false);
+    }
+  };
+
+  const loadQualityGate = async () => {
+    if (!activeMissionId) return;
+    setLoadingQualityGate(true);
+    try {
+      const data = await getMissionQualityGate(activeMissionId);
+      setQualityGate(data);
+    } catch (error) {
+      console.error('Failed to load quality gate:', error);
+      setQualityGate(null);
+    } finally {
+      setLoadingQualityGate(false);
     }
   };
 
@@ -243,6 +326,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     try {
       const data = await regenerateMissionReportPreview(activeMissionId);
       setReportPreview(data);
+      await loadQualityGate();
+      await loadActiveMission(activeMissionId);
     } catch (error) {
       console.error('Failed to regenerate report:', error);
       throw error;
@@ -253,7 +338,33 @@ export function MissionProvider({ children }: { children: ReactNode }) {
 
   const exportReportPptx = async (): Promise<Blob> => {
     if (!activeMissionId) throw new Error('No active mission');
-    return await exportMissionReportPptx(activeMissionId);
+    const blob = await exportMissionReportPptx(activeMissionId);
+    await loadActiveMission(activeMissionId);
+    return blob;
+  };
+
+  const exportReportPdf = async (): Promise<Blob> => {
+    if (!activeMissionId) throw new Error('No active mission');
+    const blob = await exportMissionReportPdf(activeMissionId);
+    await loadActiveMission(activeMissionId);
+    return blob;
+  };
+
+  const exportReportDocx = async (): Promise<Blob> => {
+    if (!activeMissionId) throw new Error('No active mission');
+    const blob = await exportMissionReportDocx(activeMissionId);
+    await loadActiveMission(activeMissionId);
+    return blob;
+  };
+
+  const getReportEmailDefaults = async (): Promise<ReportEmailDefaults> => {
+    if (!activeMissionId) throw new Error('No active mission');
+    return await getMissionReportEmailDefaults(activeMissionId);
+  };
+
+  const sendReportEmail = async (payload: SendReportEmailPayload): Promise<SendReportEmailResult> => {
+    if (!activeMissionId) throw new Error('No active mission');
+    return await sendMissionReportEmail(activeMissionId, payload);
   };
 
   const sendAssistantMessage = async (payload: AssistantMessagePayload) => {
@@ -322,6 +433,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       loadActiveMission(activeMissionId);
       loadObservations();
       loadReportPreview();
+      loadQualityGate();
       loadFeedback();
     }
   }, [activeMissionId]);
@@ -342,6 +454,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     loadingObservations,
     reportPreview,
     loadingReport,
+    qualityGate,
+    loadingQualityGate,
     chatHistory,
     loadingChat,
     feedbackEntries,
@@ -352,14 +466,21 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     createNewMission,
     createMissionFromExcel,
     deleteExistingMission,
+    inviteAuditor,
     updateActiveMission,
     uploadExcel,
+    importM365DriveItem,
     loadObservations,
     updateObservations,
     recalculatePriorities,
     loadReportPreview,
+    loadQualityGate,
     regenerateReportPreview,
     exportReportPptx,
+    exportReportPdf,
+    exportReportDocx,
+    getReportEmailDefaults,
+    sendReportEmail,
     sendAssistantMessage,
     loadFeedback,
     submitFeedback,

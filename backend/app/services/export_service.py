@@ -12,8 +12,10 @@ import pythoncom
 import win32com.client
 
 from app.models.export_models import ExportReportRequest
+from app.utils.french_normalizer import normalize_french
 
 PP_SAVE_AS_OPEN_XML_PRESENTATION = 24
+PP_SAVE_AS_PDF = 32
 PP_LAYOUT_BLANK = 12
 MSO_SHAPE_RECTANGLE = 1
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "data" / "Template PWC Universal v2.pptx"
@@ -41,9 +43,11 @@ def _bgr(r: int, g: int, b: int) -> int:
 
 # Strict PwC palette (no blue).
 PWC_RED = _bgr(192, 0, 0)
-PWC_ORANGE = _bgr(209, 122, 0)
+PWC_ORANGE = _bgr(252, 82, 7)
+PWC_LEGACY_ORANGE = _bgr(209, 122, 0)
 PWC_YELLOW = _bgr(243, 175, 34)
 PWC_GREEN = _bgr(46, 125, 50)
+PWC_DIVIDER_PEACH = _bgr(252, 228, 214)
 PWC_LIGHT_GREY = _bgr(245, 245, 245)
 PWC_LINE_GREY = _bgr(210, 210, 210)
 PWC_TEXT_GREY = _bgr(102, 102, 102)
@@ -96,7 +100,7 @@ def _wrap_cell_text(text: str, *, width: int, max_lines: int) -> str:
         wrapped = wrapped[:max_lines]
         if len(wrapped[-1]) > max(3, width - 3):
             wrapped[-1] = wrapped[-1][: max(0, width - 3)].rstrip()
-        wrapped[-1] = wrapped[-1].rstrip(" .,;:") + "..."
+        wrapped[-1] = wrapped[-1].rstrip(" .,;:")
 
     return "\r".join(wrapped)
 
@@ -126,7 +130,7 @@ def _wrap_preserving_lines(text: str, *, width: int, max_lines: int) -> str:
         last = wrapped_lines[-1]
         if len(last) > max(3, width - 3):
             last = last[: max(0, width - 3)].rstrip()
-        wrapped_lines[-1] = last.rstrip(" .,;:") + "..."
+        wrapped_lines[-1] = last.rstrip(" .,;:")
 
     return "\r".join(wrapped_lines)
 
@@ -234,6 +238,18 @@ def _build_fiscal_exercise_label(data) -> str:
     return f"Exercice {year}" if year else "Exercice en cours"
 
 
+def _build_export_toc(data) -> list[str]:
+    has_findings = bool(getattr(data, "detailed_findings", []) or [])
+    items = [
+        "Cadre de notre intervention et démarche",
+        "Synthèse générale",
+    ]
+    if has_findings:
+        items.append("Recommandations détaillées")
+    items.append("Annexes")
+    return items
+
+
 def _decorate_cover_slide(slide, data) -> None:
     page_w, page_h = _page_size(slide.Parent)
     exercise_label = _build_fiscal_exercise_label(data)
@@ -252,12 +268,12 @@ def _decorate_cover_slide(slide, data) -> None:
     )
     _add_textbox(
         slide,
-        MARGIN_X,
-        1.62 * 72,
-        page_w - 2 * MARGIN_X,
-        0.50 * 72,
+        page_w - MARGIN_X - 3.35 * 72,
+        0.48 * 72,
+        3.35 * 72,
+        0.22 * 72,
         confidentiality,
-        font_size=9,
+        font_size=8,
         color=PWC_TEXT_GREY,
     )
 
@@ -307,6 +323,20 @@ def _add_textbox(
         box.TextFrame.AutoSize = 0
     except Exception:
         pass
+    try:
+        min_size = min(font_size, 7)
+        current_size = font_size
+        available_h = max(1.0, height - box.TextFrame.MarginTop - box.TextFrame.MarginBottom)
+        available_w = max(1.0, width - box.TextFrame.MarginLeft - box.TextFrame.MarginRight)
+        while current_size > min_size:
+            bound_h = float(text_range.BoundHeight)
+            bound_w = float(text_range.BoundWidth)
+            if bound_h <= available_h and bound_w <= available_w:
+                break
+            current_size -= 1
+            text_range.Font.Size = current_size
+    except Exception:
+        pass
 
 
 def _add_rect(slide, left: float, top: float, width: float, height: float, *, fill_rgb: int = 0xFFFFFF, line_rgb: int = 0xBFBFBF, weight: float = 0.75):
@@ -325,16 +355,22 @@ def _add_rect(slide, left: float, top: float, width: float, height: float, *, fi
 
 def _add_footer(slide, footer_label: str, slide_number: int) -> None:
     try:
-        page_w, page_h = _page_size(slide.Parent)
+        try:
+            page_w, page_h = _page_size(slide.Parent)
+        except Exception:
+            page_w, page_h = SLIDE_WIDTH, SLIDE_HEIGHT
+
+        footer_y = page_h - (0.42 * 72)
+        number_w = 0.4 * 72
+        label_w = max(1.0, page_w - 2 * MARGIN_X - number_w - 0.20 * 72)
+
+        _add_textbox(slide, MARGIN_X, footer_y, label_w, 0.25 * 72, footer_label, font_size=8, color=PWC_TEXT_GREY)
+        _add_textbox(slide, page_w - MARGIN_X - number_w, footer_y, number_w, 0.25 * 72, str(slide_number), font_size=8, color=PWC_TEXT_GREY)
     except Exception:
-        page_w, page_h = SLIDE_WIDTH, SLIDE_HEIGHT
-
-    footer_y = page_h - (0.42 * 72)
-    number_w = 0.4 * 72
-    label_w = max(1.0, page_w - 2 * MARGIN_X - number_w - 0.20 * 72)
-
-    _add_textbox(slide, MARGIN_X, footer_y, label_w, 0.25 * 72, footer_label, font_size=8, color=PWC_TEXT_GREY)
-    _add_textbox(slide, page_w - MARGIN_X - number_w, footer_y, number_w, 0.25 * 72, str(slide_number), font_size=8, color=PWC_TEXT_GREY)
+        # PowerPoint COM can occasionally invalidate a slide reference while
+        # running headless from the web server. Footer rendering is cosmetic,
+        # so export should continue rather than failing the whole report.
+        return
 
 
 def _add_blank_slide(presentation):
@@ -397,6 +433,10 @@ def _is_blue_like(bgr: int) -> bool:
     return b > 110 and b > (r + 35) and b > (g + 35)
 
 
+def _is_legacy_orange(bgr: int) -> bool:
+    return bgr == PWC_LEGACY_ORANGE
+
+
 def _sanitize_fill(fill) -> None:
     try:
         if not fill.Visible:
@@ -406,7 +446,7 @@ def _sanitize_fill(fill) -> None:
 
     try:
         color = fill.ForeColor.RGB
-        if isinstance(color, int) and _is_blue_like(color):
+        if isinstance(color, int) and (_is_blue_like(color) or _is_legacy_orange(color)):
             try:
                 fill.Solid()
             except Exception:
@@ -425,7 +465,9 @@ def _sanitize_line(line) -> None:
 
     try:
         color = line.ForeColor.RGB
-        if isinstance(color, int) and _is_blue_like(color):
+        if isinstance(color, int) and _is_legacy_orange(color):
+            line.ForeColor.RGB = PWC_ORANGE
+        elif isinstance(color, int) and _is_blue_like(color):
             line.ForeColor.RGB = PWC_LINE_GREY
     except Exception:
         pass
@@ -434,7 +476,9 @@ def _sanitize_line(line) -> None:
 def _sanitize_text_range(rng) -> None:
     try:
         color = rng.Font.Color.RGB
-        if isinstance(color, int) and _is_blue_like(color):
+        if isinstance(color, int) and _is_legacy_orange(color):
+            rng.Font.Color.RGB = PWC_ORANGE
+        elif isinstance(color, int) and _is_blue_like(color):
             rng.Font.Color.RGB = PWC_TEXT_DARK
     except Exception:
         pass
@@ -517,6 +561,63 @@ def _add_text_slide_v3(presentation, title: str, body_lines: list[str], footer_l
     )
     _sanitize_slide_palette(slide)
     _add_footer(slide, footer_label, presentation.Slides.Count)
+
+
+def _add_section_divider_slide(presentation, title: str, section_number: int, footer_label: str, subtitle: str = "") -> None:
+    slide = _add_blank_slide(presentation)
+    page_w, page_h = _page_size(presentation)
+    _add_rect(slide, 0, 0, page_w, page_h, fill_rgb=PWC_DIVIDER_PEACH, line_rgb=PWC_DIVIDER_PEACH, weight=0)
+
+    # Match the divider slides from the PAREF reference deck.
+    _add_textbox(slide, 0.44 * 72, 3.78 * 72, 6.17 * 72, 2.84 * 72, title, font_size=28, color=PWC_TEXT_DARK, name="Georgia")
+    _add_textbox(slide, 8.96 * 72, 0.63 * 72, 3.79 * 72, 4.71 * 72, str(section_number), font_size=150, color=PWC_ORANGE, name="Georgia")
+
+    _add_textbox(slide, 0.44 * 72, 7.11 * 72, 0.55 * 72, 0.18 * 72, "PwC", font_size=6, color=PWC_TEXT_DARK, bold=True)
+    _add_textbox(slide, 1.17 * 72, 7.11 * 72, 9.64 * 72, 0.18 * 72, footer_label, font_size=6, color=PWC_TEXT_DARK)
+    _add_textbox(slide, 12.58 * 72, 7.11 * 72, 0.33 * 72, 0.18 * 72, str(presentation.Slides.Count), font_size=6, color=PWC_TEXT_DARK)
+    _sanitize_slide_palette(slide)
+
+
+def _add_priority_methodology_slide(presentation, footer_label: str) -> None:
+    columns = [
+        _TableColumn("Priorité", 1.20 * 72, 14, 2),
+        _TableColumn("Description", 4.45 * 72, 58, 4),
+        _TableColumn("Risque", 3.60 * 72, 48, 4),
+        _TableColumn("Délai cible", 1.45 * 72, 16, 2),
+    ]
+    rows = [
+        (
+            "Critique",
+            "Faiblesse significative pouvant affecter une application ou un processus clé, avec exposition avérée ou forte probabilité d'exploitation.",
+            "Impact potentiel élevé sur la confidentialité, l'intégrité, la disponibilité, la traçabilité ou la fiabilité des traitements.",
+            "30 jours",
+        ),
+        (
+            "Élevée",
+            "Déficience importante nécessitant une remédiation priorisée et un suivi formel par le management.",
+            "Risque notable de contournement de contrôle, d'erreur non détectée, de non-conformité ou d'interruption opérationnelle.",
+            "60 jours",
+        ),
+        (
+            "Moyenne",
+            "Amélioration attendue sur un contrôle existant, sans exposition critique immédiate identifiée.",
+            "Risque modéré pouvant réduire l'efficacité du dispositif de contrôle interne.",
+            "90 jours",
+        ),
+        (
+            "Faible",
+            "Point d'amélioration ou formalisation complémentaire sans incidence significative à court terme.",
+            "Risque limité, principalement lié à la documentation, à l'harmonisation ou à l'efficience du contrôle.",
+            "À planifier",
+        ),
+    ]
+    _add_table_slides_v3(
+        presentation,
+        "Niveaux de priorité et critères de classification",
+        columns,
+        rows,
+        footer_label,
+    )
 
 
 def _add_synthese_slide_v3(presentation, data, footer_label: str) -> None:
@@ -738,11 +839,21 @@ def _add_observation_slide_v3(presentation, finding, footer_label: str) -> None:
     compensating = _safe(getattr(finding, "compensating_procedure", "")).strip()
     auditor_comment = _safe(getattr(finding, "auditor_comment", "")).strip()
     risk = _safe(getattr(finding, "risk_impact", ""))
+    risk_scenario = _safe(getattr(finding, "risk_scenario", "")).strip()
     impact = _safe(getattr(finding, "impact_detail", ""))
+    business_impact = _safe(getattr(finding, "business_impact", "")).strip()
+    control_impact = _safe(getattr(finding, "control_impact", "")).strip()
+    compliance_impact = _safe(getattr(finding, "compliance_impact", "")).strip()
+    aggravating_factors = getattr(finding, "aggravating_factors", []) or []
     reco = _safe(getattr(finding, "recommendation", ""))
     reco_obj = _safe(getattr(finding, "recommendation_objective", ""))
     reco_steps = getattr(finding, "recommendation_steps", None)
     root_cause = _safe(getattr(finding, "root_cause", "")).strip()
+    immediate_action = _safe(getattr(finding, "immediate_action", "")).strip()
+    structural_action = _safe(getattr(finding, "structural_action", "")).strip()
+    owner = _safe(getattr(finding, "owner", "")).strip()
+    evidence_expected = _safe(getattr(finding, "evidence_expected", "")).strip()
+    follow_up = _safe(getattr(finding, "follow_up_mechanism", "")).strip()
 
     top = BODY_TOP + 0.38 * 72
     grid_gap_x = 0.18 * 72
@@ -751,7 +862,7 @@ def _add_observation_slide_v3(presentation, finding, footer_label: str) -> None:
     card_w = (width - grid_gap_x) / 2
     card_h = (content_bottom - top - grid_gap_y) / 2
 
-    def section(x: float, y: float, label: str, body: str, *, max_lines: int) -> None:
+    def section(x: float, y: float, label: str, body: str, *, max_lines: int, font_size: int = 10) -> None:
         _add_rect(slide, x, y, card_w, card_h, fill_rgb=PWC_WHITE, line_rgb=PWC_LINE_GREY, weight=0.75)
         _add_textbox(slide, x + 0.10 * 72, y + 0.10 * 72, card_w - 0.20 * 72, 0.20 * 72, label, font_size=12, bold=True, color=PWC_ORANGE, name="Georgia")
         wrapped = _wrap_preserving_lines(body, width=56, max_lines=max_lines)
@@ -762,7 +873,7 @@ def _add_observation_slide_v3(presentation, finding, footer_label: str) -> None:
             card_w - 0.20 * 72,
             card_h - 0.48 * 72,
             wrapped or "Information non fournie.",
-            font_size=10,
+            font_size=font_size,
             color=PWC_TEXT_DARK,
         )
 
@@ -774,17 +885,34 @@ def _add_observation_slide_v3(presentation, finding, footer_label: str) -> None:
     if not control_context_lines:
         control_context_lines.append("Aucune procédure compensatoire ni commentaire complémentaire renseigné.")
 
-    seed = f"{ref}|{app}|{prio}"
     risk_lines = []
-    if risk:
-        if impact:
-            risk_lines.append(_risk_impact_sentence(risk, impact, seed=seed))
-        else:
-            risk_lines.append(_risk_sentence(risk, seed=seed))
+    if risk_scenario:
+        risk_lines.append(_compact_bullet("Scenario", risk_scenario, max_len=118))
+    elif risk:
+        risk_lines.append(_compact_bullet("Risque", risk, max_len=118))
+    if aggravating_factors:
+        factors = "; ".join(str(item).strip().rstrip(".") for item in aggravating_factors[:2] if str(item).strip())
+        if factors:
+            risk_lines.append(_compact_bullet("Exposition", factors, max_len=112))
+    if business_impact or impact:
+        risk_lines.append(_compact_bullet("Impact metier", business_impact or impact, max_len=118))
+    if control_impact:
+        risk_lines.append(_compact_bullet("Controle interne", control_impact, max_len=112))
     if root_cause:
-        risk_lines.append(f"Cause racine : {root_cause}.")
+        risk_lines.append(_compact_bullet("Cause", root_cause, max_len=110))
 
-    reco_text = _pwc_recommendation(reco, objective=reco_obj, steps=reco_steps) if reco else ""
+    reco_lines = [
+        _compact_bullet("Immediat", immediate_action, max_len=115),
+        _compact_bullet("Structurel", structural_action, max_len=115),
+        _compact_bullet("Owner", owner, max_len=90),
+        _compact_bullet("Preuves", evidence_expected, max_len=112),
+        _compact_bullet("Suivi", follow_up, max_len=112),
+    ]
+    reco_lines = [line for line in reco_lines if line]
+    if not reco_lines and reco_steps:
+        reco_lines = [f"- {_truncate(_compact_step_text(str(step)), 120)}" for step in reco_steps[:5] if str(step).strip()]
+    if not reco_lines and reco:
+        reco_lines = [_compact_bullet("Action", reco, max_len=130)]
     left_x = MARGIN_X
     right_x = MARGIN_X + card_w + grid_gap_x
     top_y = top
@@ -792,11 +920,199 @@ def _add_observation_slide_v3(presentation, finding, footer_label: str) -> None:
 
     section(left_x, top_y, "Constat", constat, max_lines=9)
     section(right_x, top_y, "Procédure compensatoire / commentaire", _join_lines(control_context_lines), max_lines=9)
-    section(left_x, bottom_y, "Risque et impact", _join_lines(risk_lines) if risk_lines else "Non déterminé.", max_lines=9)
-    section(right_x, bottom_y, "Recommandation", reco_text or "Recommandation non fournie.", max_lines=10)
+    section(left_x, bottom_y, "Risque, impact et exposition", _join_lines(risk_lines[:5]) if risk_lines else "Non déterminé.", max_lines=10, font_size=9)
+    section(right_x, bottom_y, "Recommandation", _join_lines(reco_lines[:5]) if reco_lines else "Recommandation non fournie.", max_lines=10, font_size=9)
 
     _sanitize_slide_palette(slide)
     _add_footer(slide, footer_label, presentation.Slides.Count)
+
+
+def _observation_header(slide, finding) -> tuple[str, str, str, str, str]:
+    page_w, _ = _page_size(slide.Parent)
+    ref = _safe(getattr(finding, "reference", ""))
+    app = _safe(getattr(finding, "application", ""))
+    layer = _safe(getattr(finding, "layer", ""))
+    prio = _safe(getattr(finding, "priority", ""))
+    prio_label = _display_priority(prio)
+    title = _sharpen_title(_safe(getattr(finding, "title", "")), reference=ref)
+
+    header_left = " | ".join(part for part in [ref, app, layer] if part).strip(" |")
+    _add_textbox(slide, MARGIN_X, TITLE_TOP, 10.0 * 72, 0.35 * 72, header_left, font_size=18, bold=True, name="Georgia", color=PWC_TEXT_DARK)
+
+    pill_w = 2.10 * 72
+    pill_h = 0.30 * 72
+    pill_left = page_w - MARGIN_X - pill_w
+    pill_top = TITLE_TOP + 0.02 * 72
+    pill_color = _priority_color(prio)
+    _add_rect(slide, pill_left, pill_top, pill_w, pill_h, fill_rgb=pill_color, line_rgb=pill_color, weight=0)
+    _add_textbox(slide, pill_left + 0.10 * 72, pill_top + 0.03 * 72, pill_w - 0.20 * 72, pill_h - 0.06 * 72, f"Priorité {prio_label}", font_size=10, bold=True, color=PWC_WHITE)
+    _add_rect(slide, MARGIN_X, TITLE_TOP + 0.45 * 72, page_w - 2 * MARGIN_X, 0.03 * 72, fill_rgb=PWC_ORANGE, line_rgb=PWC_ORANGE, weight=0)
+
+    if title:
+        _add_textbox(slide, MARGIN_X, BODY_TOP - 0.15 * 72, page_w - 2 * MARGIN_X, 0.30 * 72, title, font_size=14, bold=True, color=PWC_TEXT_DARK)
+
+    return ref, app, layer, prio, title
+
+
+def _extract_finding_numbers(text: str) -> list[str]:
+    values = re.findall(r"\b\d+(?:[.,]\d+)?\s*%?|\b\d{1,2}/\d{1,2}/\d{4}\b", _safe(text))
+    ordered: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if cleaned and cleaned not in ordered:
+            ordered.append(cleaned)
+    return ordered[:5]
+
+
+def _extract_key_evidence_points(text: str) -> list[str]:
+    value = _clean_export_text(text)
+    lowered = value.lower()
+    points: list[str] = []
+
+    patterns = [
+        (r"(\d+)\s+comptes?\s+(?:utilisateurs?\s+)?(?:\w+\s+)?(?:toujours\s+)?actifs?.{0,45}?(?:post[- ]?départ|post[- ]?depart|départ|depart)", "{} comptes actifs post-départ"),
+        (r"(\d+)\s+connexions?\s+(?:post[- ]?départ|post[- ]?depart)", "{} connexions post-départ confirmées"),
+        (r"dont\s+(\d+).{0,45}?(?:fort\s+encours|comptes?\s+clients?)", "{} cas sur comptes clients à fort encours"),
+        (r"(\d+)\s+cas\s+de\s+cumul", "{} cas de cumul de fonctions incompatibles"),
+        (r"(\d+)\s+comptes?\s+(?:génériques|generiques|privilégiés|privilegies)", "{} comptes génériques ou privilégiés"),
+        (r"(\d+)\s+rfc.{0,45}?(?:sans|ne comportent pas)", "{} RFC sans validation documentée"),
+        (r"(\d+)\s+incidents?\s+majeurs?", "{} incidents majeurs"),
+        (r"rpo\s*:\s*([0-9]+h)", "RPO {} non vérifié par test"),
+        (r"rto\s*:\s*([0-9]+h)", "RTO {} non vérifié par test"),
+        (r"cvss\s*(?:≥|>=|superieur|supérieur)?\s*([0-9]+(?:[.,][0-9]+)?)", "Vulnérabilités critiques CVSS {}"),
+    ]
+
+    for pattern, template in patterns:
+        for match in re.finditer(pattern, lowered, flags=re.IGNORECASE):
+            point = template.format(match.group(1))
+            if point not in points:
+                points.append(point)
+            if len(points) >= 4:
+                return points
+
+    if not points:
+        numbers = _extract_finding_numbers(value)
+        if numbers:
+            points.append("Exposition quantifiée dans le constat: " + ", ".join(numbers[:3]))
+    return points[:4]
+
+
+def _build_constat_evidence_lines(finding) -> list[str]:
+    constat = _clean_export_text(getattr(finding, "finding", ""))
+    compensating = _clean_export_text(getattr(finding, "compensating_procedure", ""))
+    auditor_comment = _clean_export_text(getattr(finding, "auditor_comment", ""))
+    owners = _clean_export_text(getattr(finding, "owners", ""))
+
+    lines = [
+        _compact_bullet("Travaux", constat, max_len=145),
+    ]
+    key_points = _extract_key_evidence_points(f"{constat} {auditor_comment}")
+    if key_points:
+        lines.append(_compact_bullet("Éléments clés", "; ".join(key_points), max_len=170))
+    if auditor_comment:
+        lines.append(_compact_bullet("Preuves", auditor_comment, max_len=145))
+    if compensating:
+        lines.append(_compact_bullet("Contrôle compensatoire", compensating, max_len=145))
+    if owners:
+        lines.append(_compact_bullet("Responsables", owners, max_len=130))
+    return [line for line in lines if line][:5]
+
+
+def _build_risk_action_lines(finding) -> tuple[list[str], list[str]]:
+    risk = _safe(getattr(finding, "risk_impact", ""))
+    risk_scenario = _safe(getattr(finding, "risk_scenario", "")).strip()
+    impact = _safe(getattr(finding, "impact_detail", ""))
+    business_impact = _safe(getattr(finding, "business_impact", "")).strip()
+    control_impact = _safe(getattr(finding, "control_impact", "")).strip()
+    aggravating_factors = getattr(finding, "aggravating_factors", []) or []
+    root_cause = _safe(getattr(finding, "root_cause", "")).strip()
+    immediate_action = _safe(getattr(finding, "immediate_action", "")).strip()
+    structural_action = _safe(getattr(finding, "structural_action", "")).strip()
+    owner = _safe(getattr(finding, "owner", "")).strip()
+    evidence_expected = _safe(getattr(finding, "evidence_expected", "")).strip()
+    follow_up = _safe(getattr(finding, "follow_up_mechanism", "")).strip()
+    reco = _safe(getattr(finding, "recommendation", ""))
+    reco_steps = getattr(finding, "recommendation_steps", None)
+
+    risk_lines = []
+    if risk_scenario:
+        risk_lines.append(_compact_bullet("Scénario", risk_scenario, max_len=135))
+    elif risk:
+        risk_lines.append(_compact_bullet("Risque", risk, max_len=135))
+    if aggravating_factors:
+        factors = "; ".join(str(item).strip().rstrip(".") for item in aggravating_factors[:2] if str(item).strip())
+        risk_lines.append(_compact_bullet("Exposition", factors, max_len=130))
+    risk_lines.append(_compact_bullet("Impact métier", business_impact or impact, max_len=135))
+    risk_lines.append(_compact_bullet("Contrôle interne", control_impact, max_len=130))
+    risk_lines.append(_compact_bullet("Cause", root_cause, max_len=130))
+    risk_lines = [line for line in risk_lines if line][:5]
+
+    reco_lines = [
+        _compact_bullet("Immédiat", immediate_action, max_len=135),
+        _compact_bullet("Structurel", structural_action, max_len=135),
+        _compact_bullet("Owner", owner, max_len=120),
+        _compact_bullet("Preuves", evidence_expected, max_len=130),
+        _compact_bullet("Suivi", follow_up, max_len=130),
+    ]
+    reco_lines = [line for line in reco_lines if line]
+    if not reco_lines and reco_steps:
+        reco_lines = [f"- {_truncate(_compact_step_text(str(step)), 150)}" for step in reco_steps[:5] if str(step).strip()]
+    if not reco_lines and reco:
+        reco_lines = [_compact_bullet("Action", reco, max_len=150)]
+    return risk_lines, reco_lines[:5]
+
+
+def _add_observation_evidence_slide(presentation, finding, footer_label: str) -> None:
+    slide = _add_blank_slide(presentation)
+    page_w, _ = _page_size(presentation)
+    content_bottom = _content_bottom(presentation)
+    _observation_header(slide, finding)
+
+    top = BODY_TOP + 0.38 * 72
+    width = page_w - 2 * MARGIN_X
+    height = content_bottom - top
+    _add_rect(slide, MARGIN_X, top, width, height, fill_rgb=PWC_WHITE, line_rgb=PWC_LINE_GREY, weight=0.75)
+    _add_textbox(slide, MARGIN_X + 0.16 * 72, top + 0.12 * 72, width - 0.32 * 72, 0.24 * 72, "Constat et éléments probants", font_size=13, bold=True, color=PWC_ORANGE, name="Georgia")
+    body = _wrap_preserving_lines(_join_lines(_build_constat_evidence_lines(finding)), width=118, max_lines=15)
+    _add_textbox(slide, MARGIN_X + 0.16 * 72, top + 0.50 * 72, width - 0.32 * 72, height - 0.64 * 72, body, font_size=12, color=PWC_TEXT_DARK)
+    _sanitize_slide_palette(slide)
+    _add_footer(slide, footer_label, presentation.Slides.Count)
+
+
+def _add_observation_risk_action_slide(presentation, finding, footer_label: str) -> None:
+    slide = _add_blank_slide(presentation)
+    page_w, _ = _page_size(presentation)
+    content_bottom = _content_bottom(presentation)
+    _observation_header(slide, finding)
+
+    top = BODY_TOP + 0.38 * 72
+    gap = 0.22 * 72
+    width = page_w - 2 * MARGIN_X
+    card_w = (width - gap) / 2
+    height = content_bottom - top
+    risk_lines, reco_lines = _build_risk_action_lines(finding)
+
+    def card(x: float, title: str, lines: list[str]) -> None:
+        _add_rect(slide, x, top, card_w, height, fill_rgb=PWC_WHITE, line_rgb=PWC_LINE_GREY, weight=0.75)
+        _add_textbox(slide, x + 0.14 * 72, top + 0.12 * 72, card_w - 0.28 * 72, 0.24 * 72, title, font_size=13, bold=True, color=PWC_ORANGE, name="Georgia")
+        body = _wrap_preserving_lines(_join_lines(lines), width=56, max_lines=15)
+        _add_textbox(slide, x + 0.14 * 72, top + 0.50 * 72, card_w - 0.28 * 72, height - 0.64 * 72, body, font_size=11, color=PWC_TEXT_DARK)
+
+    card(MARGIN_X, "Risque, impact et cause", risk_lines)
+    card(MARGIN_X + card_w + gap, "Plan d'action recommandé", reco_lines)
+    _sanitize_slide_palette(slide)
+    _add_footer(slide, footer_label, presentation.Slides.Count)
+
+
+def _add_finding_slides(presentation, finding, footer_label: str) -> None:
+    priority = _safe(getattr(finding, "priority", "")).strip().lower()
+    if priority == "critical":
+        _add_observation_evidence_slide(presentation, finding, footer_label)
+        _add_observation_risk_action_slide(presentation, finding, footer_label)
+        return
+    # High/Medium/Low observations are covered in the consolidated action plan
+    # to keep the report close to the compact style of the reference decks.
+    return
 
 
 def _add_table_slides_v3(
@@ -812,6 +1128,30 @@ def _add_table_slides_v3(
     table_top = BODY_TOP + 0.10 * 72
     table_width = page_w - 2 * MARGIN_X
     table_bottom = _content_bottom(presentation)
+
+    total_column_width = sum(max(1.0, col.width) for col in columns)
+    if total_column_width > table_width:
+        scale = table_width / total_column_width
+        columns = [
+            _TableColumn(
+                col.header,
+                max(0.45 * 72, col.width * scale),
+                col.wrap_width,
+                col.max_lines,
+            )
+            for col in columns
+        ]
+        # If minimum widths pushed the total over the page, compress the last
+        # column. This prevents PowerPoint COM from receiving invalid geometry.
+        overflow = sum(col.width for col in columns) - table_width
+        if overflow > 0 and columns:
+            last = columns[-1]
+            columns[-1] = _TableColumn(
+                last.header,
+                max(0.35 * 72, last.width - overflow),
+                last.wrap_width,
+                last.max_lines,
+            )
 
     header_h = 0.34 * 72
     min_row_h = 0.38 * 72
@@ -884,7 +1224,7 @@ def _add_table_slides_v3(
                     col.width - 0.12 * 72,
                     h - 0.12 * 72,
                     value,
-                    font_size=10,
+                    font_size=9 if title == "Plan d'action consolidé" else 10,
                     bold=bold,
                     color=font_color,
                 )
@@ -1419,8 +1759,82 @@ def _add_control_matrix_slides(presentation, data, footer_label: str) -> None:
 
 
 def _truncate(text: str, max_len: int = 220) -> str:
-    value = _safe(text)
-    return value if len(value) <= max_len else value[: max_len - 3].rstrip() + "..."
+    value = " ".join(_safe(text).replace("\r", " ").replace("\n", " ").split()).strip()
+    value = value.replace("..", ".").replace(" .", ".").replace(" ,", ",")
+    if len(value) <= max_len:
+        return value
+    cut = value[:max_len]
+    last_space = cut.rfind(" ")
+    if last_space > max(20, max_len // 2):
+        cut = cut[:last_space]
+    return cut.rstrip(" .,;:")
+
+
+def _first_complete_clause(text: str, max_len: int) -> str:
+    value = _clean_export_text(text)
+    if len(value) <= max_len:
+        return value.rstrip(" .")
+
+    separators = [". ", "; ", " : ", " - ", ", ce qui ", ", dont ", " avec ", " afin de ", " permettant "]
+    candidates: list[str] = []
+    for separator in separators:
+        if separator in value:
+            head = value.split(separator, 1)[0].strip()
+            if 35 <= len(head) <= max_len:
+                candidates.append(head)
+
+    if candidates:
+        return max(candidates, key=len).rstrip(" .")
+    shortened = _truncate(value, max_len).rstrip(" .")
+    return _remove_dangling_tail(shortened)
+
+
+def _remove_dangling_tail(text: str) -> str:
+    value = _safe(text).strip().rstrip(" ,;:")
+    if not value:
+        return value
+    dangling_patterns = [
+        r"\b(?:a|à|de|des|du|d'|l'|la|le|les|un|une|et|ou|avec|sans|pour|par|sur|dans|entre|dont|leur|leurs|non)$",
+        r"\b(?:mouvements de|cycle de vie des|justification des|identifiants appartenant a|identifiants appartenant à)$",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for pattern in dangling_patterns:
+            match = re.search(pattern, value, flags=re.IGNORECASE)
+            if match and match.end() == len(value):
+                value = value[: match.start()].strip().rstrip(" ,;:")
+                changed = True
+    return value
+
+
+def _clean_export_text(text: str) -> str:
+    value = " ".join(_safe(text).replace("\r", " ").replace("\n", " ").split()).strip()
+    while ".." in value:
+        value = value.replace("..", ".")
+    value = value.replace(" .", ".").replace(" ,", ",")
+    return normalize_french(value).strip()
+
+
+def _compact_bullet(label: str, value: str, *, max_len: int) -> str:
+    cleaned = _first_complete_clause(value, max_len).rstrip(".")
+    if not cleaned:
+        return ""
+    return f"- {label}: {cleaned}"
+
+
+def _compact_step_text(step: str) -> str:
+    value = _clean_export_text(step)
+    replacements = {
+        "Action corrective immediate:": "Immediat:",
+        "Action structurelle:": "Structurel:",
+        "Responsable:": "Owner:",
+        "Preuves attendues:": "Preuves:",
+        "Mecanisme de suivi:": "Suivi:",
+    }
+    for source, target in replacements.items():
+        value = value.replace(source, target)
+    return value
 
 
 def _pwc_constat(text: str) -> str:
@@ -1609,17 +2023,96 @@ def _add_finding_slide(presentation, finding, footer_label: str) -> None:
     _add_footer(slide, footer_label, presentation.Slides.Count)
 
 
-def _build_recommendation_rows(data) -> list[tuple[str, str, str, str]]:
+def _target_deadline(priority: str) -> str:
+    normalized = _safe(priority).strip().lower()
+    if normalized == "critical":
+        return "30 jours"
+    if normalized == "high":
+        return "60 jours"
+    if normalized == "medium":
+        return "90 jours"
+    return "À planifier"
+
+
+def _action_plan_value(item, action_getter) -> str:
+    immediate = _brief_action(action_getter(item, "immediate_action", 0), 82)
+    structural = _brief_action(action_getter(item, "structural_action", 1), 82)
+    if immediate and structural and immediate.lower() != structural.lower():
+        return f"Immédiat: {immediate}. Structurel: {structural}"
+    return immediate or structural or _first_complete_clause(getattr(item, "recommendation", ""), 110)
+
+
+def _brief_action(text: str, max_len: int) -> str:
+    value = _clean_export_text(text).rstrip(".")
+    if not value:
+        return ""
+    rules = [
+        (("désactiver", "comptes"), "Désactiver les comptes résiduels et documenter les exceptions"),
+        (("rapprochement", "rh/it"), "Formaliser un rapprochement RH/IT récurrent des comptes actifs"),
+        (("comptes génériques",), "Revoir les comptes génériques ou privilégiés et supprimer les droits non justifiés"),
+        (("pam",), "Basculer vers des comptes nominatifs ou un dispositif PAM"),
+        (("recertification",), "Instaurer une campagne périodique de recertification des droits sensibles"),
+        (("restauration",), "Planifier un test de restauration sur le périmètre concerné"),
+        (("calendrier de tests",), "Formaliser un calendrier de tests de reprise et de restauration"),
+        (("correctifs",), "Prioriser les correctifs critiques en retard et documenter les exceptions"),
+        (("patch management",), "Mettre en place un patch management fondé sur la criticité"),
+        (("incidents",), "Centraliser les incidents ouverts et qualifier leur criticité"),
+        (("itsm",), "Formaliser l'usage d'un outil ITSM pour le suivi des incidents"),
+        (("changements",), "Revoir les changements non conformes et documenter les validations a posteriori"),
+        (("mises en production",), "Bloquer les mises en production sans demande approuvée et preuve de recette"),
+        (("contrôle attendu",), "Formaliser le contrôle attendu avec rôles, fréquence et critères d'exécution"),
+    ]
+    lowered = value.lower()
+    for markers, summary in rules:
+        if all(marker in lowered for marker in markers):
+            return summary
+    return _first_complete_clause(value, max_len)
+
+
+def _build_recommendation_rows(data) -> list[tuple[str, str, str, str, str]]:
+    def action_value(item, attr: str, fallback_index: int | None = None) -> str:
+        value = _clean_export_text(getattr(item, attr, ""))
+        if value:
+            return value
+        steps = [_compact_step_text(str(step)) for step in (getattr(item, "recommendation_steps", []) or []) if str(step).strip()]
+        if fallback_index is not None and len(steps) > fallback_index:
+            return steps[fallback_index]
+        return _safe(getattr(item, "recommendation", ""))
+
     rows = [
         (
             _safe(item.reference),
-            " - ".join(part for part in [_safe(item.application), _safe(getattr(item, "layer", ""))] if part),
-            _display_priority(_safe(item.priority)),
-            _safe(item.recommendation),
+            _first_complete_clause(_clean_export_text(getattr(item, "owner", "")) or _clean_export_text(getattr(item, "owners", "")), 48),
+            _action_plan_value(item, action_value),
+            _first_complete_clause(action_value(item, "evidence_expected", 3), 92),
+            _target_deadline(_safe(item.priority)),
         )
         for item in data.detailed_recommendations
     ]
     return rows
+
+
+def _add_closing_slide(presentation, data, footer_label: str) -> None:
+    slide = _add_blank_slide(presentation)
+    page_w, page_h = _page_size(presentation)
+    client = _safe(getattr(data, "client_name", "")).strip()
+    year = _extract_report_year(data)
+
+    _add_textbox(slide, MARGIN_X, 1.70 * 72, page_w - 2 * MARGIN_X, 0.70 * 72, "Merci", font_size=34, bold=True, color=PWC_TEXT_DARK, name="Georgia")
+    _add_rect(slide, MARGIN_X, 2.48 * 72, 2.40 * 72, 0.06 * 72, fill_rgb=PWC_ORANGE, line_rgb=PWC_ORANGE, weight=0)
+    closing = "Fin du rapport"
+    if client:
+        closing = f"Fin du rapport - {client}"
+    _add_textbox(slide, MARGIN_X, 2.78 * 72, page_w - 2 * MARGIN_X, 0.35 * 72, closing, font_size=14, color=PWC_TEXT_GREY)
+
+    legal_year = year or "2026"
+    legal = (
+        f"© {legal_year} PwC. Tous droits réservés. PwC désigne le réseau PwC et/ou une ou plusieurs de ses entités membres, "
+        "chacune constituant une entité juridique distincte. Ce document est strictement privé et confidentiel."
+    )
+    _add_textbox(slide, MARGIN_X, page_h - 1.15 * 72, page_w - 2 * MARGIN_X, 0.48 * 72, legal, font_size=8, color=PWC_TEXT_GREY)
+    _sanitize_slide_palette(slide)
+    _add_footer(slide, footer_label, presentation.Slides.Count)
 
 
 def _prepare_presentation(powerpoint, data):
@@ -1641,10 +2134,17 @@ def _prepare_presentation(powerpoint, data):
     return presentation
 
 
-def build_report_pptx(result: ExportReportRequest) -> BytesIO:
+def _generate_report_file(result: ExportReportRequest, *, output_format: str) -> BytesIO:
     data = result.structured_output
     if not TEMPLATE_PATH.exists():
         raise FileNotFoundError(f"PowerPoint template not found: {TEMPLATE_PATH}")
+
+    normalized_format = output_format.strip().lower()
+    if normalized_format not in {"pptx", "pdf"}:
+        raise ValueError(f"Unsupported export format: {output_format}")
+
+    save_as_type = PP_SAVE_AS_OPEN_XML_PRESENTATION if normalized_format == "pptx" else PP_SAVE_AS_PDF
+    temp_suffix = ".pptx" if normalized_format == "pptx" else ".pdf"
 
     footer_label = _build_footer_label(data)
     pythoncom.CoInitialize()
@@ -1656,19 +2156,69 @@ def build_report_pptx(result: ExportReportRequest) -> BytesIO:
     try:
         presentation = _prepare_presentation(powerpoint, data)
 
-        _add_text_slide_v3(presentation, "Sommaire", [f"{index}. {item}" for index, item in enumerate(data.table_of_contents, start=1)], footer_label)
+        _add_text_slide_v3(presentation, "Sommaire", [f"{index}. {item}" for index, item in enumerate(_build_export_toc(data), start=1)], footer_label)
+        _add_section_divider_slide(
+            presentation,
+            "Cadre de notre intervention et démarche",
+            1,
+            footer_label,
+            "Périmètre, objectifs, intervenants et approche d'audit",
+        )
         _add_text_slide_v3(presentation, "Préambule", [data.preamble], footer_label)
         _add_text_slide_v3(presentation, "Objectifs", [f"- {item}" for item in data.objectives] or [f"- {_safe(data.executive_summary)}"], footer_label)
         _add_scope_slide(presentation, data, footer_label)
         _add_text_slide_v3(presentation, "Intervenants", _build_intervenant_rows(data), footer_label)
         _add_text_slide_v3(presentation, "Approche d'audit", [f"- {item}" for item in data.audit_approach], footer_label)
+        _add_priority_methodology_slide(presentation, footer_label)
 
         page_w, _ = _page_size(presentation)
         table_width = page_w - 2 * MARGIN_X
 
+        _add_section_divider_slide(
+            presentation,
+            "Synthèse générale",
+            2,
+            footer_label,
+            "Vue d'ensemble des constats, priorités et contrôles couverts",
+        )
+        _add_control_matrix_slides(presentation, data, footer_label)
+        _add_synthese_slide_v3(presentation, data, footer_label)
+        _add_priorities_slide_v3(presentation, data, footer_label)
+
+        _add_section_divider_slide(
+            presentation,
+            "Recommandations détaillées",
+            3,
+            footer_label,
+            "Points critiques et plan d'action consolidé",
+        )
+        for finding in data.detailed_findings:
+            _add_finding_slides(presentation, finding, footer_label)
+
         _add_table_slides_v3(
             presentation,
-            "Liste des contrôles",
+            "Plan d'action consolidé",
+            [
+                _TableColumn("ID", 0.75 * 72, 10, 1),
+                _TableColumn("Owner", 1.55 * 72, 18, 2),
+                _TableColumn("Action prioritaire", 4.40 * 72, 56, 6),
+                _TableColumn("Preuve attendue", 3.10 * 72, 40, 5),
+                _TableColumn("Échéance", table_width - (0.75 + 1.55 + 4.40 + 3.10) * 72, 12, 1),
+            ],
+            _build_recommendation_rows(data),
+            footer_label,
+        )
+
+        _add_section_divider_slide(
+            presentation,
+            "Annexes",
+            4,
+            footer_label,
+            "Référentiel des contrôles couverts",
+        )
+        _add_table_slides_v3(
+            presentation,
+            "Liste des contrôles couverts",
             [
                 _TableColumn("Réf.", 1.10 * 72, 14, 2),
                 _TableColumn("Description du contrôle", table_width - (1.10 + 3.90) * 72, 68, 4),
@@ -1677,32 +2227,12 @@ def build_report_pptx(result: ExportReportRequest) -> BytesIO:
             _build_control_rows(data),
             footer_label,
         )
+        _add_closing_slide(presentation, data, footer_label)
 
-        _add_control_matrix_slides(presentation, data, footer_label)
-
-        _add_synthese_slide_v3(presentation, data, footer_label)
-        _add_priorities_slide_v3(presentation, data, footer_label)
-
-        for finding in data.detailed_findings:
-            _add_observation_slide_v3(presentation, finding, footer_label)
-
-        _add_table_slides_v3(
-            presentation,
-            "Recommandations détaillées",
-            [
-                _TableColumn("ID", 1.20 * 72, 14, 1),
-                _TableColumn("Application", 3.20 * 72, 26, 2),
-                _TableColumn("Priorité", 1.30 * 72, 12, 1),
-                _TableColumn("Recommandation", table_width - (1.20 + 3.20 + 1.30) * 72, 68, 5),
-            ],
-            _build_recommendation_rows(data),
-            footer_label,
-        )
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=temp_suffix) as temp_file:
             temp_path = Path(temp_file.name)
 
-        presentation.SaveAs(str(temp_path), PP_SAVE_AS_OPEN_XML_PRESENTATION)
+        presentation.SaveAs(str(temp_path), save_as_type)
         presentation.Close()
         presentation = None
         time.sleep(1)
@@ -1727,3 +2257,11 @@ def build_report_pptx(result: ExportReportRequest) -> BytesIO:
         except Exception:
             pass
         pythoncom.CoUninitialize()
+
+
+def build_report_pptx(result: ExportReportRequest) -> BytesIO:
+    return _generate_report_file(result, output_format="pptx")
+
+
+def build_report_pdf(result: ExportReportRequest) -> BytesIO:
+    return _generate_report_file(result, output_format="pdf")

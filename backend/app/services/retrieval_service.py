@@ -18,7 +18,11 @@ search_client = SearchClient(
 )
 
 
-def retrieve_documents(query: str, top_k: int = 5, mission_id: str | None = None):
+def retrieve_documents(query: str, top_k: int = 5, mission_id: str | None = None, *, allow_global: bool = False):
+    if not mission_id and not allow_global:
+        logger.warning("Blocked unscoped retrieval request. A mission_id is required for RAG access.")
+        return []
+
     query_vector = embeddings.embed_query(query)
     vector_query = VectorizedQuery(
         vector=query_vector,

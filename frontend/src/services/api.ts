@@ -1,6 +1,10 @@
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import type {
+  AuthConfig,
+  AuthSession,
+  AuthUser,
+  LogoutResult,
   Mission,
   Observation,
   ParsedMissionContext,
@@ -13,6 +17,10 @@ import type {
   ReportApplicationDetail,
   ReportProcessSummary,
   ReportFinding,
+  FindingTraceability,
+  TraceabilitySource,
+  ReportQualityGateResult,
+  ReportQualityIssue,
   AssistantResponse,
   ChatMessage,
   CreateMissionPayload,
@@ -22,7 +30,14 @@ import type {
   PrioritySource,
   AuditorFeedback,
   CreateFeedbackPayload,
-  ChatSource
+  ChatSource,
+  ReportEmailDefaults,
+  SendReportEmailPayload,
+  SendReportEmailResult,
+  MissionQualityGateResult,
+  M365DriveItem,
+  NotificationItem,
+  SecurityAuditEventsResponse
 } from '../types';
 
 type ApiMission = {
@@ -38,6 +53,24 @@ type ApiMission = {
   observations_count?: number;
   applications_count?: number;
   control_ids_count?: number;
+  report_generated_at?: string | null;
+  exported_at?: string | null;
+  owner_email?: string;
+  invited_auditor_emails?: string[];
+  workflow?: {
+    steps?: Array<{
+      key?: string;
+      label?: string;
+      state?: 'completed' | 'in_progress' | 'coming_next';
+      status_label?: string;
+      description?: string;
+    }>;
+    next_best_action?: string;
+    validated_observations_count?: number;
+    total_observations_count?: number;
+    report_generated?: boolean;
+    exported_at?: string | null;
+  };
 };
 
 type ApiObservation = {
@@ -125,6 +158,7 @@ type ApiReportPreviewResponse = {
     priority_summary?: Array<Record<string, unknown>>;
     detailed_findings?: Array<{
       observation_id?: string;
+      original_reference?: string;
       title?: string;
       reference?: string;
       domain?: string;
@@ -136,21 +170,89 @@ type ApiReportPreviewResponse = {
       finding?: string;
       compensating_procedure?: string;
       risk_impact?: string;
+      risk_scenario?: string;
       impact_detail?: string;
+      business_impact?: string;
+      control_impact?: string;
+      compliance_impact?: string;
       root_cause?: string;
+      aggravating_factors?: string[];
       recommendation?: string;
       recommendation_objective?: string;
+      immediate_action?: string;
+      structural_action?: string;
+      owner?: string;
+      evidence_expected?: string;
+      follow_up_mechanism?: string;
       recommendation_steps?: string[];
       priority?: string;
       priority_justification?: string;
       auditor_comment?: string;
       management_summary?: string;
+      traceability?: {
+        observation_source_id?: string;
+        original_reference?: string;
+        resolved_reference?: string;
+        fields_used?: string[];
+        source_documents?: Array<{
+          source_id?: string;
+          document_name?: string;
+          source_type?: string;
+          excerpt?: string;
+        }>;
+        heuristic_rules_triggered?: string[];
+        confidence_score?: number;
+        priority_justification?: string;
+        priority_decision_mode?: string;
+        recommendation_decision_mode?: string;
+        agent?: string;
+        generated_at?: string;
+        report_version?: string;
+      };
     }>;
     detailed_recommendations?: Array<Record<string, unknown>>;
     prior_recommendations_follow_up?: string[];
     appendices?: string[];
+    quality_gate?: {
+      readiness_score?: number;
+      export_allowed?: boolean;
+      blocking_issues_count?: number;
+      warning_issues_count?: number;
+      summary?: string;
+      issues?: Array<{
+        rule_id?: string;
+        severity?: 'blocking' | 'warning';
+        title?: string;
+        message?: string;
+        recommendation?: string;
+        affected_observation_ids?: string[];
+        affected_applications?: string[];
+        affected_section?: string;
+        score_impact?: number;
+      }>;
+    };
   };
   answer?: string;
+};
+
+type ApiMissionQualityGateResponse = {
+  mission_id?: string;
+  readiness_score?: number;
+  export_allowed?: boolean;
+  blocking_issues_count?: number;
+  warning_issues_count?: number;
+  summary?: string;
+  issues?: Array<{
+    rule_id?: string;
+    severity?: 'blocking' | 'warning';
+    title?: string;
+    message?: string;
+    recommendation?: string;
+    affected_observation_ids?: string[];
+    affected_applications?: string[];
+    affected_section?: string;
+    score_impact?: number;
+  }>;
 };
 
 type ApiAssistantMessage = {
@@ -211,9 +313,75 @@ type ApiFeedbackListResponse = {
   feedbacks?: ApiFeedback[];
 };
 
+type ApiAuthUser = {
+  user_id?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+  organization?: string;
+  job_title?: string;
+  role?: string;
+  auth_provider?: string;
+  last_login_at?: string | null;
+  profile_image_url?: string | null;
+};
+
+type ApiAuthConfig = {
+  enabled?: boolean;
+  provider?: string;
+  login_url?: string | null;
+  signup_url?: string | null;
+  logout_url?: string | null;
+  password_sign_in_enabled?: boolean;
+  microsoft_sign_in_enabled?: boolean;
+};
+
+type ApiAuthSession = {
+  authenticated?: boolean;
+  auth_enabled?: boolean;
+  user?: ApiAuthUser | null;
+};
+
+type ApiLogoutResponse = {
+  logged_out?: boolean;
+  logout_url?: string | null;
+};
+
+type ApiUpdateMyProfilePayload = {
+  organization?: string;
+  job_title?: string;
+};
+
+type ApiM365DriveItemsResponse = {
+  value?: M365DriveItem[];
+};
+
+type ApiM365IngestResponse = {
+  message?: string;
+  filename?: string;
+  chunks_indexed?: number;
+  structured_observations?: number | null;
+};
+
+type ApiNotification = {
+  notification_id?: string;
+  recipient_email?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  mission_id?: string | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
+  is_read?: boolean;
+  created_at?: string;
+  read_at?: string | null;
+};
+
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' }
+  headers: { 'Content-Type': 'application/json' },
+  withCredentials: true
 });
 
 function handleApiError(error: any): Error {
@@ -268,6 +436,30 @@ function mapMission(apiMission: ApiMission): Mission {
     observations_count: apiMission.observations_count ?? 0,
     applications_count: apiMission.applications_count ?? 0,
     control_ids_count: apiMission.control_ids_count ?? 0,
+    report_generated_at: apiMission.report_generated_at ?? null,
+    exported_at: apiMission.exported_at ?? null,
+    owner_email: apiMission.owner_email ?? '',
+    invited_auditor_emails: Array.isArray(apiMission.invited_auditor_emails)
+      ? apiMission.invited_auditor_emails.map((email) => String(email)).filter(Boolean)
+      : [],
+    workflow: apiMission.workflow
+      ? {
+          steps: Array.isArray(apiMission.workflow.steps)
+            ? apiMission.workflow.steps.map((step, index) => ({
+                key: String(step.key ?? `step-${index + 1}`),
+                label: String(step.label ?? `Step ${index + 1}`),
+                state: step.state ?? 'coming_next',
+                status_label: String(step.status_label ?? ''),
+                description: String(step.description ?? '')
+              }))
+            : [],
+          next_best_action: String(apiMission.workflow.next_best_action ?? ''),
+          validated_observations_count: Number(apiMission.workflow.validated_observations_count ?? 0),
+          total_observations_count: Number(apiMission.workflow.total_observations_count ?? 0),
+          report_generated: Boolean(apiMission.workflow.report_generated),
+          exported_at: apiMission.workflow.exported_at ?? null
+        }
+      : undefined,
     current_file: apiMission.uploaded_file_name
       ? {
           name: apiMission.uploaded_file_name,
@@ -517,9 +709,62 @@ function mapReportPreview(response: ApiReportPreviewResponse): ReportPreview {
       percentage: Number(item.percentage ?? 0)
     }));
 
+  const mapTraceabilitySources = (value: unknown): TraceabilitySource[] =>
+    toRecordArray(value).map((item) => ({
+      source_id: String(item.source_id ?? ''),
+      document_name: String(item.document_name ?? ''),
+      source_type: String(item.source_type ?? ''),
+      excerpt: String(item.excerpt ?? '')
+    }));
+
+  const mapFindingTraceability = (value: unknown): FindingTraceability => {
+    const item = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    return {
+      observation_source_id: String(item.observation_source_id ?? ''),
+      original_reference: String(item.original_reference ?? ''),
+      resolved_reference: String(item.resolved_reference ?? ''),
+      fields_used: toStringArray(item.fields_used),
+      source_documents: mapTraceabilitySources(item.source_documents),
+      heuristic_rules_triggered: toStringArray(item.heuristic_rules_triggered),
+      confidence_score: Number(item.confidence_score ?? 0),
+      priority_justification: String(item.priority_justification ?? ''),
+      priority_decision_mode: String(item.priority_decision_mode ?? ''),
+      recommendation_decision_mode: String(item.recommendation_decision_mode ?? ''),
+      agent: String(item.agent ?? ''),
+      generated_at: String(item.generated_at ?? ''),
+      report_version: String(item.report_version ?? '')
+    };
+  };
+
+  const mapQualityIssues = (value: unknown): ReportQualityIssue[] =>
+    toRecordArray(value).map((item) => ({
+      rule_id: String(item.rule_id ?? ''),
+      severity: (String(item.severity ?? 'warning') === 'blocking' ? 'blocking' : 'warning'),
+      title: String(item.title ?? ''),
+      message: String(item.message ?? ''),
+      recommendation: String(item.recommendation ?? ''),
+      affected_observation_ids: toStringArray(item.affected_observation_ids),
+      affected_applications: toStringArray(item.affected_applications),
+      affected_section: String(item.affected_section ?? ''),
+      score_impact: Number(item.score_impact ?? 0)
+    }));
+
+  const mapQualityGate = (value: unknown): ReportQualityGateResult => {
+    const item = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    return {
+      readiness_score: Number(item.readiness_score ?? 100),
+      export_allowed: item.export_allowed !== false,
+      blocking_issues_count: Number(item.blocking_issues_count ?? 0),
+      warning_issues_count: Number(item.warning_issues_count ?? 0),
+      summary: String(item.summary ?? ''),
+      issues: mapQualityIssues(item.issues)
+    };
+  };
+
   const mapFindings = (value: unknown): ReportFinding[] =>
     toRecordArray(value).map((item) => ({
       observation_id: String(item.observation_id ?? ''),
+      original_reference: String(item.original_reference ?? ''),
       reference: String(item.reference ?? ''),
       domain: String(item.domain ?? ''),
       category: String(item.category ?? ''),
@@ -531,15 +776,26 @@ function mapReportPreview(response: ApiReportPreviewResponse): ReportPreview {
       finding: String(item.finding ?? ''),
       compensating_procedure: String(item.compensating_procedure ?? ''),
       risk_impact: String(item.risk_impact ?? ''),
+      risk_scenario: String(item.risk_scenario ?? ''),
       impact_detail: String(item.impact_detail ?? ''),
+      business_impact: String(item.business_impact ?? ''),
+      control_impact: String(item.control_impact ?? ''),
+      compliance_impact: String(item.compliance_impact ?? ''),
       root_cause: String(item.root_cause ?? ''),
+      aggravating_factors: toStringArray(item.aggravating_factors),
       recommendation: String(item.recommendation ?? ''),
       recommendation_objective: String(item.recommendation_objective ?? ''),
+      immediate_action: String(item.immediate_action ?? ''),
+      structural_action: String(item.structural_action ?? ''),
+      owner: String(item.owner ?? ''),
+      evidence_expected: String(item.evidence_expected ?? ''),
+      follow_up_mechanism: String(item.follow_up_mechanism ?? ''),
       recommendation_steps: toStringArray(item.recommendation_steps),
       priority: String(item.priority ?? ''),
       priority_justification: String(item.priority_justification ?? ''),
       auditor_comment: String(item.auditor_comment ?? ''),
-      management_summary: String(item.management_summary ?? '')
+      management_summary: String(item.management_summary ?? ''),
+      traceability: mapFindingTraceability(item.traceability)
     }));
 
   const normalizedStructuredOutput: ReportStructuredOutput = {
@@ -577,7 +833,8 @@ function mapReportPreview(response: ApiReportPreviewResponse): ReportPreview {
     prior_recommendations_follow_up: toStringArray(structuredOutput?.prior_recommendations_follow_up),
     appendices: toStringArray(structuredOutput?.appendices),
     executive_summary: String(structuredOutput?.executive_summary ?? ''),
-    conclusion: String(structuredOutput?.conclusion ?? '')
+    conclusion: String(structuredOutput?.conclusion ?? ''),
+    quality_gate: mapQualityGate(structuredOutput?.quality_gate)
   };
 
   return {
@@ -585,6 +842,28 @@ function mapReportPreview(response: ApiReportPreviewResponse): ReportPreview {
     request: response.request,
     answer: response.answer || '',
     structured_output: normalizedStructuredOutput
+  };
+}
+
+function mapMissionQualityGate(response: ApiMissionQualityGateResponse): MissionQualityGateResult {
+  return {
+    mission_id: String(response.mission_id ?? ''),
+    readiness_score: Number(response.readiness_score ?? 100),
+    export_allowed: response.export_allowed !== false,
+    blocking_issues_count: Number(response.blocking_issues_count ?? 0),
+    warning_issues_count: Number(response.warning_issues_count ?? 0),
+    summary: String(response.summary ?? ''),
+    issues: (response.issues ?? []).map((item) => ({
+      rule_id: String(item.rule_id ?? ''),
+      severity: item.severity === 'blocking' ? 'blocking' : 'warning',
+      title: String(item.title ?? ''),
+      message: String(item.message ?? ''),
+      recommendation: String(item.recommendation ?? ''),
+      affected_observation_ids: Array.isArray(item.affected_observation_ids) ? item.affected_observation_ids.map(String) : [],
+      affected_applications: Array.isArray(item.affected_applications) ? item.affected_applications.map(String) : [],
+      affected_section: String(item.affected_section ?? ''),
+      score_impact: Number(item.score_impact ?? 0)
+    }))
   };
 }
 
@@ -598,7 +877,7 @@ function mapFeedback(apiFeedback: ApiFeedback): AuditorFeedback {
     mission_id: apiFeedback.mission_id || '',
     created_at: apiFeedback.created_at || '',
     author: apiFeedback.author || undefined,
-    scope: apiFeedback.scope || undefined,
+    scope: apiFeedback.scope === 'observation' ? 'observation' : 'report',
     target_id: apiFeedback.target_id || undefined,
     rating,
     sentiment: apiFeedback.sentiment || undefined,
@@ -611,6 +890,175 @@ function mapFeedback(apiFeedback: ApiFeedback): AuditorFeedback {
   };
 }
 
+function mapAuthUser(user?: ApiAuthUser | null): AuthUser | null {
+  if (!user?.user_id || !user?.email) {
+    return null;
+  }
+
+  return {
+    user_id: user.user_id,
+    email: user.email,
+    first_name: user.first_name || '',
+    last_name: user.last_name || '',
+    display_name: user.display_name || user.email,
+    organization: user.organization || '',
+    job_title: user.job_title || '',
+    role: user.role || 'auditor',
+    auth_provider: user.auth_provider || 'entra_external_id',
+    last_login_at: user.last_login_at || null,
+    profile_image_url: user.profile_image_url || null
+  };
+}
+
+function mapNotification(item: ApiNotification): NotificationItem {
+  return {
+    notification_id: String(item.notification_id ?? ''),
+    recipient_email: String(item.recipient_email ?? ''),
+    type: String(item.type ?? ''),
+    title: String(item.title ?? ''),
+    message: String(item.message ?? ''),
+    mission_id: item.mission_id ?? null,
+    related_entity_type: item.related_entity_type ?? null,
+    related_entity_id: item.related_entity_id ?? null,
+    is_read: Boolean(item.is_read),
+    created_at: String(item.created_at ?? ''),
+    read_at: item.read_at ?? null
+  };
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+  try {
+    const response = await api.get<ApiAuthConfig>('/auth/config');
+    return {
+      enabled: Boolean(response.data?.enabled),
+      provider: response.data?.provider || 'disabled',
+      login_url: response.data?.login_url || null,
+      signup_url: response.data?.signup_url || null,
+      logout_url: response.data?.logout_url || null,
+      password_sign_in_enabled: response.data?.password_sign_in_enabled !== false,
+      microsoft_sign_in_enabled: response.data?.microsoft_sign_in_enabled !== false
+    };
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getAuthSession(): Promise<AuthSession> {
+  try {
+    const response = await api.get<ApiAuthSession>('/auth/me');
+    return {
+      authenticated: Boolean(response.data?.authenticated),
+      auth_enabled: Boolean(response.data?.auth_enabled),
+      user: mapAuthUser(response.data?.user)
+    };
+  } catch (error: any) {
+    if (error?.response?.status === 401) {
+      return { authenticated: false, auth_enabled: true, user: null };
+    }
+    throw handleApiError(error);
+  }
+}
+
+export async function logout(): Promise<LogoutResult> {
+  try {
+    const response = await api.post<ApiLogoutResponse>('/auth/logout');
+    return {
+      logged_out: response.data?.logged_out !== false,
+      logout_url: response.data?.logout_url || null
+    };
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function updateMyProfile(payload: ApiUpdateMyProfilePayload): Promise<AuthUser> {
+  try {
+    const response = await api.patch<ApiAuthUser>('/auth/me', payload);
+    const user = mapAuthUser(response.data);
+    if (!user) {
+      throw new Error('Profile update returned an invalid user.');
+    }
+    return user;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getNotifications(): Promise<NotificationItem[]> {
+  try {
+    const response = await api.get<ApiNotification[]>('/notifications');
+    return Array.isArray(response.data) ? response.data.map(mapNotification) : [];
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getSecurityAuditEvents(limit = 100): Promise<SecurityAuditEventsResponse> {
+  try {
+    const response = await api.get<SecurityAuditEventsResponse>('/security/audit-events', {
+      params: { limit }
+    });
+    return {
+      events: Array.isArray(response.data?.events) ? response.data.events : [],
+      chain: {
+        valid: Boolean(response.data?.chain?.valid),
+        checked_events: Number(response.data?.chain?.checked_events ?? 0),
+        reason: String(response.data?.chain?.reason ?? '')
+      }
+    };
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function markNotificationRead(notificationId: string): Promise<NotificationItem> {
+  try {
+    const response = await api.patch<ApiNotification>(`/notifications/${notificationId}/read`);
+    return mapNotification(response.data);
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<{ updated: number }> {
+  try {
+    const response = await api.post<{ updated?: number }>('/notifications/read-all');
+    return { updated: Number(response.data?.updated ?? 0) };
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function uploadMyProfileAvatar(file: File): Promise<AuthUser> {
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post<ApiAuthUser>('/auth/me/avatar', form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    const user = mapAuthUser(response.data);
+    if (!user) {
+      throw new Error('Avatar upload returned an invalid user.');
+    }
+    return user;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function deleteMyProfileAvatar(): Promise<AuthUser> {
+  try {
+    const response = await api.delete<ApiAuthUser>('/auth/me/avatar');
+    const user = mapAuthUser(response.data);
+    if (!user) {
+      throw new Error('Avatar removal returned an invalid user.');
+    }
+    return user;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
 export async function getMissions(): Promise<Mission[]> {
   try {
     const response = await api.get<ApiMission[]>('/missions');
@@ -618,6 +1066,11 @@ export async function getMissions(): Promise<Mission[]> {
   } catch (error) {
     throw handleApiError(error);
   }
+}
+
+export async function fetchMission(): Promise<Mission | null> {
+  const missions = await getMissions();
+  return missions[0] ?? null;
 }
 
 export async function createMission(payload: CreateMissionPayload): Promise<Mission> {
@@ -751,6 +1204,17 @@ export async function deleteMission(missionId: string): Promise<{ deleted: strin
   }
 }
 
+export async function inviteAuditorToMission(missionId: string, auditorEmail: string): Promise<Mission> {
+  try {
+    const response = await api.post<ApiMission>(`/missions/${missionId}/invite-auditor`, {
+      auditor_email: auditorEmail
+    });
+    return mapMission(response.data);
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
 export async function uploadMissionExcel(missionId: string, file: File): Promise<void> {
   try {
     const form = new FormData();
@@ -758,6 +1222,67 @@ export async function uploadMissionExcel(missionId: string, file: File): Promise
     await api.post('/upload', form, {
       params: { mission_id: missionId },
       headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getM365MyDriveRoot(): Promise<M365DriveItem[]> {
+  try {
+    const response = await api.get<ApiM365DriveItemsResponse>('/m365/my-drive/root');
+    return Array.isArray(response.data?.value) ? response.data.value : [];
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getM365DriveChildren(driveId: string, itemId: string): Promise<M365DriveItem[]> {
+  try {
+    const response = await api.get<ApiM365DriveItemsResponse>(
+      `/m365/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}/children`
+    );
+    return Array.isArray(response.data?.value) ? response.data.value : [];
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function ingestM365DriveItem(
+  missionId: string,
+  item: M365DriveItem
+): Promise<ApiM365IngestResponse> {
+  const driveId = item.parentReference?.driveId;
+  if (!driveId) {
+    throw new Error('The selected Microsoft 365 file does not include a drive id.');
+  }
+
+  try {
+    const response = await api.post<ApiM365IngestResponse>('/m365/ingest-drive-item', {
+      mission_id: missionId,
+      drive_id: driveId,
+      item_id: item.id,
+      filename: item.name
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function downloadM365DriveItem(item: M365DriveItem): Promise<File> {
+  const driveId = item.parentReference?.driveId;
+  if (!driveId) {
+    throw new Error('The selected Microsoft 365 file does not include a drive id.');
+  }
+
+  try {
+    const response = await api.get(
+      `/m365/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(item.id)}/content`,
+      { responseType: 'blob' }
+    );
+    return new File([response.data], item.name, {
+      type: response.data?.type || 'application/octet-stream'
     });
   } catch (error) {
     throw handleApiError(error);
@@ -823,9 +1348,70 @@ export async function regenerateMissionReportPreview(missionId: string): Promise
   }
 }
 
+export async function getMissionQualityGate(missionId: string): Promise<MissionQualityGateResult> {
+  try {
+    const response = await api.get<ApiMissionQualityGateResponse>(`/missions/${missionId}/quality-gate`);
+    return mapMissionQualityGate(response.data);
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
 export async function exportMissionReportPptx(missionId: string): Promise<Blob> {
   try {
-    const response = await api.get(`/missions/${missionId}/export-report`, { responseType: 'blob' });
+    const response = await api.get(`/missions/${missionId}/export-report`, {
+      params: { format: 'pptx' },
+      responseType: 'blob'
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function exportMissionReportPdf(missionId: string): Promise<Blob> {
+  try {
+    const response = await api.get(`/missions/${missionId}/export-report`, {
+      params: { format: 'pdf' },
+      responseType: 'blob'
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function exportMissionReportDocx(missionId: string): Promise<Blob> {
+  try {
+    const response = await api.get(`/missions/${missionId}/export-report`, {
+      params: { format: 'docx' },
+      responseType: 'blob'
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function getMissionReportEmailDefaults(missionId: string): Promise<ReportEmailDefaults> {
+  try {
+    const response = await api.get<ReportEmailDefaults>(`/missions/${missionId}/report-email-defaults`);
+    return {
+      to_email: String(response.data?.to_email ?? ''),
+      subject: String(response.data?.subject ?? ''),
+      body: String(response.data?.body ?? '')
+    };
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function sendMissionReportEmail(
+  missionId: string,
+  payload: SendReportEmailPayload
+): Promise<SendReportEmailResult> {
+  try {
+    const response = await api.post<SendReportEmailResult>(`/missions/${missionId}/send-report-email`, payload);
     return response.data;
   } catch (error) {
     throw handleApiError(error);

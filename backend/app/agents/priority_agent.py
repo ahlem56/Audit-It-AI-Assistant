@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from app.agents.base import BaseAgent
-
 VALID_PRIORITIES = {"Critical", "High", "Medium", "Low"}
 _PRIORITY_RANK = {"Critical": 3, "High": 2, "Medium": 1, "Low": 0}
 
@@ -14,7 +12,7 @@ def _normalize(text: str) -> str:
 
 
 _NUM_RE = re.compile(r"\b\d+(?:[.,]\d+)?\b")
-_AMOUNT_RE = re.compile(r"(\d[\d\s.,]{2,})\s*(tnd|dt|dinar|dinars|eur|usd|€|\\$)?", re.IGNORECASE)
+_AMOUNT_RE = re.compile(r"(\d[\d\s.,]{2,})\s*(tnd|dt|dinar|dinars|eur|usd|â‚¬|\\$)?", re.IGNORECASE)
 
 
 def _extract_numbers(text: str) -> list[float]:
@@ -33,7 +31,6 @@ def _extract_amount(text: str) -> float:
     best = 0.0
     for raw, _ccy in _AMOUNT_RE.findall(text or ""):
         cleaned = raw.replace(" ", "").replace("\u00a0", "").replace(",", ".")
-        # Strip trailing separators
         cleaned = cleaned.strip(".")
         try:
             val = float(cleaned)
@@ -49,64 +46,101 @@ def _score_priority(input_data: dict) -> int:
 
     IMPORTANT:
     This is a SAFETY NET only. The main engine is the LLM-based priority reasoning agent.
-    Keep this minimal and stable: only "hard red flags" that should never be Low.
+    Keep this stable, but sufficiently expressive to distinguish serious "High"
+    issues from the few situations that should remain "Critical".
     """
     ref = str(input_data.get("controle_ref", "") or input_data.get("reference", "")).upper().strip()
     title = str(input_data.get("title", "") or "")
     constat = str(input_data.get("condition", "") or input_data.get("constat", "") or "")
     category = str(input_data.get("category", "") or "")
     impact = str(input_data.get("impact", "") or input_data.get("impact_potentiel", "") or "")
+    application = str(input_data.get("application", "") or "")
 
-    text = _normalize(" ".join([ref, title, constat, category, impact]))
+    text = _normalize(" ".join([ref, title, constat, category, impact, application]))
 
+    nums = _extract_numbers(constat)
+    max_num = max(nums) if nums else 0.0
     amount = _extract_amount(constat)
 
-    # Baseline-only rules (early return). Keep this small and stable.
     baseline = 10
 
-    # 1) Post-departure accounts with activity
+    if any(
+        k in text
+        for k in (
+            "core banking",
+            "t24",
+            "swift",
+            "openbanking",
+            "banque en ligne",
+            "payroll",
+            "paie",
+            "rh",
+            "client",
+            "production",
+        )
+    ):
+        baseline += 8
+
+    if any(k in text for k in ("absence", "aucun", "aucune", "non formalise", "non supervise", "non documente")):
+        baseline += 8
+
     if any(k in text for k in ("post depart", "post-depart", "apres depart", "depart")) and any(k in text for k in ("compte", "utilisateur")):
-        if any(k in text for k in ("connex", "connexion", "telecharg", "download", "exfil")):
-            baseline = max(baseline, 70)  # at least High
+        baseline = max(baseline, 68)
+        if max_num >= 3:
+            baseline += 8
+        if any(k in text for k in ("connex", "connexion", "operation", "transaction", "mouvement")):
+            baseline = max(baseline, 82)
         if any(k in text for k in ("telecharg", "download", "exfil")):
-            baseline = max(baseline, 85)  # often Critical when misuse is evidenced
+            baseline = max(baseline, 90)
 
-    # 2) SoD conflicts / financial exposure
     if any(k in text for k in ("sod", "separation of duties", "separation des fonctions", "incompatib", "auto-valid", "paiement", "payment")):
-        baseline = max(baseline, 65)  # at least High
-        if amount >= 20000:
-            baseline = max(baseline, 85)  # Critical when exposure is material
+        baseline = max(baseline, 70)
+        if max_num >= 10:
+            baseline += 6
+        if amount >= 20000 or any(k in text for k in ("credit", "virement", "swift", "fort encours")):
+            baseline = max(baseline, 86)
 
-    # 3) Privileged/shared accounts (DBA/admin/shared)
-    if any(k in text for k in ("dba", "administrateur", "privileg", "root")) and any(k in text for k in ("partag", "shared", "compte generique")):
-        baseline = max(baseline, 65)
+    if any(k in text for k in ("dba", "administrateur", "privileg", "root", "superuser", "teller_admin")) and any(k in text for k in ("partag", "shared", "compte generique", "comptes generiques", "compte partage", "comptes partages")):
+        baseline = max(baseline, 72)
+        if any(k in text for k in ("sans supervision", "non supervise", "interactive", "interactif", "validation", "annulation")):
+            baseline = max(baseline, 82)
 
-    # 4) PRA/PCA not tested
+    if any(k in text for k in ("mot de passe", "mots de passe", "password", "mfa", "2fa", "authentification")):
+        baseline = max(baseline, 58)
+        if any(k in text for k in ("openbanking", "banque en ligne", "client", "virement")):
+            baseline = max(baseline, 68)
+        if any(k in text for k in ("absence", "non gere", "non geree", "brute force", "tentatives suspectes")):
+            baseline += 6
+
     if any(k in text for k in ("pra", "pca", "drp", "plan de reprise")) and any(k in text for k in ("non teste", "pas teste", "aucun test", "18 mois", "24 mois", "12 mois")):
-        baseline = max(baseline, 65)
-        if any(k in text for k in ("finance", "erp", "paiement")):
-            baseline = max(baseline, 85)
+        baseline = max(baseline, 72)
+        if any(k in text for k in ("rto", "rpo", "restauration", "site de secours")):
+            baseline += 8
+        if any(k in text for k in ("finance", "erp", "paiement", "t24", "core banking")):
+            baseline = max(baseline, 86)
 
-    return max(0, min(100, baseline))
+    if any(k in text for k in ("correctif", "patch", "vulnerabil", "cve", "openssl", "escalade de privileg")):
+        baseline = max(baseline, 68)
+        if any(k in text for k in ("critique", "cvss", "retard", "exploitable")):
+            baseline = max(baseline, 76)
+        if max_num >= 10 or any(k in text for k in ("banque en ligne", "openbanking", "session client", "client")):
+            baseline = max(baseline, 86)
 
-    """
-    # Security patches / known vulnerabilities not applied
-    if any(k in text for k in ("correctif", "patch", "vulnerabil", "injection sql", "sql", "escalade de privileg")):
-        score += 25
-        if any(k in text for k in ("critique", "eleve", "élev", "retard")) or max_num >= 30:
-            score += 10
-
-    # Dev/prod access conflicts (PC-02 style)
     if any(k in text for k in ("developpeur", "developpement", "dev")) and any(k in text for k in ("production", "prod")):
-        pass
-        if any(k in text for k in ("acces cumul", "accès cumul", "separation", "segreg")):
-            score += 10
+        baseline = max(baseline, 66)
+        if any(k in text for k in ("acces cumul", "separation", "segreg", "simultane")):
+            baseline = max(baseline, 74)
         if max_num >= 5:
-            score += 10
+            baseline += 6
 
-    # Cap
-    return max(0, min(100, score))
-    """
+    if any(k in text for k in ("isae", "soc 2", "prestataire", "sla", "kpi", "second niveau", "comite de pilotage")):
+        baseline = max(baseline, 56)
+        if any(k in text for k in ("absence", "aucun", "aucune")):
+            baseline = max(baseline, 66)
+        if any(k in text for k in ("core banking", "openbanking", "maintenance applicative")):
+            baseline = max(baseline, 72)
+
+    return max(0, min(100, int(baseline)))
 
 
 def _score_to_priority(score: int) -> str:
@@ -146,8 +180,6 @@ def enforce_min_priority(observation: dict, priority: str) -> str:
 
     minimum = "Low"
 
-    # Contextual scaling: truly sensitive business domains should not remain Low by default.
-    # Keep this narrow to avoid over-severity on every ERP observation.
     app_text = _normalize(application)
     is_critical_app = any(
         k in (app_text + " " + text)
@@ -159,12 +191,14 @@ def enforce_min_priority(observation: dict, priority: str) -> str:
             "payroll",
             "banque",
             "core banking",
+            "t24",
+            "swift",
+            "openbanking",
         )
     )
     if is_critical_app:
         minimum = _max_priority(minimum, "Medium")
 
-    # Sensitive data exposure should not be classified as Low.
     if any(
         k in text
         for k in (
@@ -182,64 +216,62 @@ def enforce_min_priority(observation: dict, priority: str) -> str:
     ):
         minimum = _max_priority(minimum, "High")
 
-    # Shared/generic accounts (even non-DBA) -> at least High (traceability risk).
-    if any(k in text for k in ("compte generique", "compte partage", "compte partagee", "compte commun", "shared account", "generic account")):
+    if any(k in text for k in ("compte generique", "comptes generiques", "compte partage", "comptes partages", "compte partagee", "compte commun", "shared account", "generic account")):
         minimum = _max_priority(minimum, "High")
 
-    # Post-departure accounts with activity -> at least High; exfil/download -> Critical
     if any(k in text for k in ("post depart", "post-depart", "apres depart", "depart")) and any(k in text for k in ("compte", "accounts", "utilisateur")):
-        if any(k in text for k in ("connex", "connexion", "telecharg", "download", "exfil")):
+        if any(k in text for k in ("connex", "connexion", "operation", "transaction", "mouvement")):
             minimum = _max_priority(minimum, "High")
         if any(k in text for k in ("telecharg", "download", "exfil")):
             minimum = _max_priority(minimum, "Critical")
+        if max_num >= 3 and any(k in text for k in ("client", "fort encours", "t24", "core banking")):
+            minimum = _max_priority(minimum, "Critical")
 
-    # Privileged / shared admin / DBA accounts -> at least High
-    if any(k in text for k in ("dba", "administrateur", "privileg", "root")) and any(k in text for k in ("partag", "shared", "compte generique")):
+    if any(k in text for k in ("dba", "administrateur", "privileg", "root", "superuser", "teller_admin")) and any(k in text for k in ("partag", "shared", "compte generique", "comptes generiques", "compte partage", "comptes partages")):
         minimum = _max_priority(minimum, "High")
+        if any(k in text for k in ("validation", "annulation", "virement", "swift", "interactive", "interactif")):
+            minimum = _max_priority(minimum, "Critical")
 
-    # SoD conflicts with financial exposure -> Critical; otherwise at least High
+    if any(k in text for k in ("mot de passe", "mots de passe", "password", "mfa", "2fa", "authentification")):
+        minimum = _max_priority(minimum, "Medium")
+        if any(k in text for k in ("openbanking", "banque en ligne", "client", "virement", "donnees personnelles")):
+            minimum = _max_priority(minimum, "High")
+
     if any(k in text for k in ("sod", "separation des fonctions", "separation of duties", "incompatib", "auto-valid")):
         minimum = _max_priority(minimum, "High")
-        if amount >= 20000:
+        if amount >= 20000 or any(k in text for k in ("credit", "virement", "swift", "fort encours")):
             minimum = _max_priority(minimum, "Critical")
 
-    # Critical vulnerabilities / delayed security patches -> at least High
-    if any(k in text for k in ("vulnerabil", "patch", "correctif")) and any(k in text for k in ("critique", "eleve", "retard", "injection sql", "escalade")):
+    if any(k in text for k in ("vulnerabil", "patch", "correctif", "cve")) and any(k in text for k in ("critique", "eleve", "retard", "cvss", "injection sql", "escalade")):
         minimum = _max_priority(minimum, "High")
+        if max_num >= 10 and any(k in text for k in ("openbanking", "banque en ligne", "client")):
+            minimum = _max_priority(minimum, "Critical")
 
-    # PRA/PCA not tested over long period -> at least High (Critical if finance/ERP)
     if any(k in text for k in ("pra", "pca", "drp", "plan de reprise")) and any(k in text for k in ("non teste", "pas teste", "aucun test", "18 mois", "24 mois", "12 mois")):
         minimum = _max_priority(minimum, "High")
-        if any(k in text for k in ("finance", "erp", "paiement")):
+        if any(k in text for k in ("finance", "erp", "paiement", "t24", "core banking")):
             minimum = _max_priority(minimum, "Critical")
 
-    # Backup restore tests not performed -> at least High
     if any(k in text for k in ("sauvegarde", "backup", "restauration")) and any(k in text for k in ("aucun test", "non teste", "pas teste")):
         minimum = _max_priority(minimum, "High")
 
-    # Backup failures with high rate -> at least High
     if any(k in text for k in ("sauvegarde", "backup")) and any(k in text for k in ("echec", "echecs", "erreur", "failed")):
         if "%" in (constat or ""):
             minimum = _max_priority(minimum, "High")
 
-    # Dev with R/W in prod (segregation breach) -> at least High
     if any(k in text for k in ("developpeur", "developpement", "dev")) and any(k in text for k in ("production", "prod")):
-        if any(k in text for k in ("r/w", "rw", "lecture/ecriture", "lecture", "ecriture", "read", "write", "modification")):
+        if any(k in text for k in ("r/w", "rw", "lecture/ecriture", "lecture", "ecriture", "read", "write", "modification", "simultane")):
             minimum = _max_priority(minimum, "High")
 
-    # Privileged access recertification missing/overdue -> at least High
     if any(k in text for k in ("recertification", "re certification", "revue")) and any(k in text for k in ("superuser", "administrateur", "privileg")):
         if any(k in text for k in ("aucune", "absence", "jamais", "non realise", "non effectue")) and any(k in text for k in ("12 mois", "16 mois", "18 mois", "24 mois", "mois")):
             minimum = _max_priority(minimum, "High")
 
-    # Production changes without formal approval (CAB) -> at least Medium (High if many cases).
     if any(k in text for k in ("cab", "change advisory board", "mise en production", "changement")) and any(k in text for k in ("sans validation", "absence de validation", "ne comporte pas de validation", "non valide")):
         minimum = _max_priority(minimum, "Medium")
-        # Escalate when material population is mentioned.
         if max_num >= 10:
             minimum = _max_priority(minimum, "High")
 
-    # Apply minimum
     return _max_priority(priority, minimum)
 
 
@@ -329,13 +361,11 @@ def _derive_risk_level(input_data: dict) -> str:
 
 
 def _deterministic_priority(input_data: dict) -> str:
-    # New evidence-based scoring first (more coherent for ITGC datasets).
     score = _score_priority(input_data)
     prio = _score_to_priority(score)
     if prio in VALID_PRIORITIES:
         return prio
 
-    # Fallback to legacy markers
     impact = _derive_impact_level(input_data)
     risk = _derive_risk_level(input_data)
 
@@ -348,7 +378,7 @@ def _deterministic_priority(input_data: dict) -> str:
     return "Low"
 
 
-class PriorityAgent(BaseAgent):
+class PriorityAgent:
     def run(self, input_data: dict) -> str:
         return _deterministic_priority(input_data)
 

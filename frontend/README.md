@@ -25,8 +25,7 @@ Modern React + TypeScript frontend for a professional ITGC audit assistant.
 
 ## Backend integration
 - `POST /upload`
-- `POST /assistant`
-- `GET /assistant/export`
 - `POST /chat`
+- `GET /missions/{mission_id}/export-report`
 
 If the backend is unavailable, mock data is used automatically.

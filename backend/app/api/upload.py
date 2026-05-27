@@ -5,15 +5,17 @@ import os
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 from app.services.blob_service import upload_file
 from app.services.audit_input_service import save_latest_audit_input
+from app.services.auth_service import require_authenticated_user
 from app.services.indexing_service import prepare_documents_for_index
 from app.services.mission_service import get_mission, save_mission_audit_input, update_mission
 from app.services.rag_service import split_documents
 from app.services.search_service import upload_documents_to_index
+from app.services.security_audit_service import log_security_event
 from app.utils.document_parser import load_document
 from app.utils.structured_audit_parser import parse_audit_workbook
 
@@ -21,7 +23,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _process_uploaded_file(file_name: str, content: bytes, mission_id: str) -> dict:
+def _process_uploaded_file(file_name: str, content: bytes, mission_id: str, user_id: str) -> dict:
     upload_file(file_name, content)
 
     suffix = Path(file_name).suffix
@@ -34,7 +36,7 @@ def _process_uploaded_file(file_name: str, content: bytes, mission_id: str) -> d
 
         if suffix.lower() in {".xlsx", ".xlsm"}:
             structured_input = parse_audit_workbook(temp_file_path)
-            save_mission_audit_input(mission_id, structured_input, uploaded_file_name=file_name)
+            save_mission_audit_input(mission_id, structured_input, uploaded_file_name=file_name, user_id=user_id)
             # Compatibility note: keep the legacy single-file snapshot for older flows until all clients migrate.
             save_latest_audit_input(structured_input)
         else:
@@ -44,6 +46,7 @@ def _process_uploaded_file(file_name: str, content: bytes, mission_id: str) -> d
                     "uploaded_file_name": file_name,
                     "parsing_status": "parsed",
                 },
+                user_id=user_id,
             )
 
         docs = load_document(temp_file_path)
@@ -65,26 +68,44 @@ def _process_uploaded_file(file_name: str, content: bytes, mission_id: str) -> d
 @router.post("/upload")
 async def upload_document(
     mission_id: str,
+    request: Request,
     file: UploadFile = File(...),
+    user=Depends(require_authenticated_user),
 ):
     try:
-        mission = await run_in_threadpool(get_mission, mission_id)
+        mission = await run_in_threadpool(get_mission, mission_id, user_id=user["user_id"])
         if mission is None:
             raise HTTPException(status_code=404, detail="Mission not found.")
         content = await file.read()
-        await run_in_threadpool(update_mission, mission_id, {"parsing_status": "parsing"})
-        return await run_in_threadpool(_process_uploaded_file, file.filename, content, mission_id)
+        await run_in_threadpool(update_mission, mission_id, {"parsing_status": "parsing"}, user_id=user["user_id"])
+        result = await run_in_threadpool(_process_uploaded_file, file.filename, content, mission_id, user["user_id"])
+        await run_in_threadpool(
+            log_security_event,
+            action="FILE_UPLOADED",
+            user=user,
+            request=request,
+            mission_id=mission_id,
+            resource_type="file",
+            resource_id=file.filename,
+            metadata={
+                "filename": file.filename,
+                "size_bytes": len(content),
+                "chunks_indexed": result.get("chunks_indexed"),
+                "structured_observations": result.get("structured_observations"),
+            },
+        )
+        return result
     except ValueError as exc:
         logger.warning("Unsupported upload rejected: %s", exc)
         try:
-            await run_in_threadpool(update_mission, mission_id, {"parsing_status": "error"})
+            await run_in_threadpool(update_mission, mission_id, {"parsing_status": "error"}, user_id=user["user_id"])
         except Exception:
             pass
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Upload/indexing failed")
         try:
-            await run_in_threadpool(update_mission, mission_id, {"parsing_status": "error"})
+            await run_in_threadpool(update_mission, mission_id, {"parsing_status": "error"}, user_id=user["user_id"])
         except Exception:
             pass
         raise HTTPException(
