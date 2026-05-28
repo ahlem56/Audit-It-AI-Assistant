@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, chat, feedbacks, m365, missions, notifications, observations, security, upload
-from app.config.settings import APP_NAME, AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_INDEX, AZURE_SEARCH_KEY
+from app.config.settings import APP_NAME, AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_INDEX, AZURE_SEARCH_KEY, CORS_ALLOWED_ORIGINS
 from app.services.auth_service import init_auth_storage, require_authenticated_user
 from app.services.search_service import ensure_search_index_schema
 from app.services.sql_storage_service import init_azure_sql_storage
@@ -15,14 +15,7 @@ app = FastAPI(title=APP_NAME)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

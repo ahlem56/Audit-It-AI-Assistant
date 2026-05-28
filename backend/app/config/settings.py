@@ -7,6 +7,15 @@ load_dotenv()
 APP_NAME = os.getenv("APP_NAME", "Audit IT Assistant API")
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
+CORS_ALLOWED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:4173,"
+        "http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:4173",
+    ).split(",")
+    if origin.strip()
+]
 
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 AZURE_STORAGE_CONTAINER_RAW = os.getenv("AZURE_STORAGE_CONTAINER_RAW")
