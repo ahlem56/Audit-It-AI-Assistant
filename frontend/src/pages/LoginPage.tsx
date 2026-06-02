@@ -13,7 +13,7 @@ export default function LoginPage() {
   const nextPath = searchParams.get('next') || '/';
   const error = searchParams.get('error_description') || searchParams.get('error');
 
-  if (!loading && authenticated) {
+  if (!loading && (!authEnabled || authenticated)) {
     return <Navigate to={nextPath === '/login' ? '/' : nextPath} replace state={{ from: location }} />;
   }
 

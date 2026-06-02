@@ -54,14 +54,14 @@ function FullScreenStatus({ title, subtitle }: { title: string; subtitle: string
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const { initialized, loading, authenticated } = useAuthContext();
+  const { initialized, loading, authenticated, authEnabled } = useAuthContext();
   const { text } = useLanguage();
 
   if (!initialized || loading) {
     return <FullScreenStatus title={text.fullScreen.loadingTitle} subtitle={text.fullScreen.loadingSubtitle} />;
   }
 
-  if (!authenticated) {
+  if (authEnabled && !authenticated) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?next=${next}`} replace />;
   }
