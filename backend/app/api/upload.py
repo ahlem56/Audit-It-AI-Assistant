@@ -13,6 +13,7 @@ from app.services.audit_input_service import save_latest_audit_input
 from app.services.auth_service import require_authenticated_user
 from app.services.indexing_service import prepare_documents_for_index
 from app.services.mission_service import get_mission, save_mission_audit_input, update_mission
+from app.services.priority_recalculation_service import recalculate_mission_observation_priorities
 from app.services.rag_service import split_documents
 from app.services.search_service import upload_documents_to_index
 from app.services.security_audit_service import log_security_event
@@ -39,7 +40,13 @@ def _process_uploaded_file(file_name: str, content: bytes, mission_id: str, user
             save_mission_audit_input(mission_id, structured_input, uploaded_file_name=file_name, user_id=user_id)
             # Compatibility note: keep the legacy single-file snapshot for older flows until all clients migrate.
             save_latest_audit_input(structured_input)
+            priority_result = recalculate_mission_observation_priorities(
+                mission_id,
+                user_id,
+                preserve_manual_overrides=False,
+            )
         else:
+            priority_result = None
             update_mission(
                 mission_id,
                 {
@@ -59,6 +66,7 @@ def _process_uploaded_file(file_name: str, content: bytes, mission_id: str, user
             "filename": file_name,
             "chunks_indexed": len(indexed_docs),
             "structured_observations": len(structured_input.observations) if suffix.lower() in {".xlsx", ".xlsm"} else None,
+            "priorities_calculated": priority_result is not None,
         }
     finally:
         if temp_file_path and os.path.exists(temp_file_path):

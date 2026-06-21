@@ -26,6 +26,8 @@ class MissionRecord(Base):
     owner_user_id = Column(String(120), default="")
     owner_email = Column(String(255), default="")
     invited_auditor_emails_json = Column(Text, default="[]")
+    audit_input_json = Column(Text, nullable=True)
+    audit_input_cache_key = Column(String(50), nullable=True)
 
     observations = relationship("ObservationRecord", back_populates="mission", cascade="all, delete-orphan")
     feedbacks = relationship("FeedbackRecord", back_populates="mission", cascade="all, delete-orphan")

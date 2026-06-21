@@ -20,6 +20,20 @@ from app.config.settings import (
 logger = logging.getLogger(__name__)
 
 
+def _smtp_error_message(exc: Exception) -> str:
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return (
+            "SMTP authentication failed. Gmail rejected the configured username/password. "
+            "Use a valid Gmail App Password for REPORT_EMAIL_SMTP_PASSWORD and make sure "
+            "REPORT_EMAIL_SMTP_USERNAME matches the Gmail account."
+        )
+    if isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError)):
+        return f"SMTP connection failed: {exc}"
+    if isinstance(exc, smtplib.SMTPException):
+        return f"SMTP send failed: {exc}"
+    return str(exc)
+
+
 def build_default_report_email_subject(*, mission_name: str, client_name: str, fiscal_year: str) -> str:
     mission_label = mission_name.strip() or "Rapport d'audit ITGC"
     client_label = client_name.strip() or "client"
@@ -67,11 +81,14 @@ def _send_plain_email(*, to_email: str, subject: str, body: str) -> None:
     message.set_content(body.strip())
 
     logger.info("Sending email to %s", to_email)
-    with smtplib.SMTP(REPORT_EMAIL_SMTP_HOST, REPORT_EMAIL_SMTP_PORT, timeout=30) as server:
-        if REPORT_EMAIL_USE_TLS:
-            server.starttls()
-        server.login(REPORT_EMAIL_SMTP_USERNAME, REPORT_EMAIL_SMTP_PASSWORD)
-        server.send_message(message)
+    try:
+        with smtplib.SMTP(REPORT_EMAIL_SMTP_HOST, REPORT_EMAIL_SMTP_PORT, timeout=30) as server:
+            if REPORT_EMAIL_USE_TLS:
+                server.starttls()
+            server.login(REPORT_EMAIL_SMTP_USERNAME, REPORT_EMAIL_SMTP_PASSWORD)
+            server.send_message(message)
+    except Exception as exc:
+        raise RuntimeError(_smtp_error_message(exc)) from exc
 
 
 def send_report_email(
@@ -97,11 +114,27 @@ def send_report_email(
     )
 
     logger.info("Sending report email to %s", to_email)
-    with smtplib.SMTP(REPORT_EMAIL_SMTP_HOST, REPORT_EMAIL_SMTP_PORT, timeout=30) as server:
-        if REPORT_EMAIL_USE_TLS:
-            server.starttls()
-        server.login(REPORT_EMAIL_SMTP_USERNAME, REPORT_EMAIL_SMTP_PASSWORD)
-        server.send_message(message)
+    try:
+        with smtplib.SMTP(REPORT_EMAIL_SMTP_HOST, REPORT_EMAIL_SMTP_PORT, timeout=30) as server:
+            if REPORT_EMAIL_USE_TLS:
+                server.starttls()
+            server.login(REPORT_EMAIL_SMTP_USERNAME, REPORT_EMAIL_SMTP_PASSWORD)
+            server.send_message(message)
+    except Exception as exc:
+        raise RuntimeError(_smtp_error_message(exc)) from exc
+
+
+def send_report_test_email(*, to_email: str, subject: str, body: str) -> None:
+    _send_plain_email(
+        to_email=to_email,
+        subject=f"[SMTP test] {subject.strip()}",
+        body=(
+            f"{body.strip()}\n\n"
+            "----\n"
+            "This is a temporary SMTP test email from Audit IT Assistant. "
+            "No report attachment was included."
+        ),
+    )
 
 
 def send_mission_invitation_email(

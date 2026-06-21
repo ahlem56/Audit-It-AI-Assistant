@@ -19,7 +19,8 @@ const messages = {
     sidebar: {
       productName: 'Audit IT Assistant',
       workspace: 'Mission workspace',
-      dashboard: 'Mission Dashboard',
+      dashboard: 'Dashboard',
+      missionDashboard: 'Missions',
       observations: 'Observations',
       chat: 'Chat',
       report: 'Report',
@@ -169,7 +170,8 @@ const messages = {
     sidebar: {
       productName: 'Audit IT Assistant',
       workspace: 'Espace mission',
-      dashboard: 'Tableau de bord',
+      dashboard: 'Tableau de bord global',
+      missionDashboard: 'Tableau de bord mission',
       observations: 'Observations',
       chat: 'Chat',
       report: 'Rapport',

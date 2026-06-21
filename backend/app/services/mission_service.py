@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from app.services.sql_storage_service import (
     create_mission as create_sql_mission,
     delete_mission as delete_sql_mission,
     get_mission as get_sql_mission,
+    load_audit_input as load_sql_audit_input,
+    load_latest_report_version,
     list_missions as list_sql_missions,
     save_report_version,
     sync_observations,
@@ -106,9 +109,45 @@ def _load_mission_record(mission_id: str) -> dict | None:
     return _read_json(path)
 
 
+def _recover_mission_record_from_audit_input(
+    mission_id: str,
+    *,
+    owner_user: dict[str, Any] | None = None,
+) -> dict | None:
+    path = _audit_input_path(mission_id)
+    if not path.exists():
+        return None
+
+    try:
+        audit_input = StructuredAuditInput.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    mission_info = audit_input.mission
+    recovered = _default_mission_payload(
+        mission_id=mission_id,
+        name=mission_info.titre_mission or mission_id,
+        client_name=mission_info.entite_auditee or "",
+        fiscal_year=mission_info.periode or "",
+        status="Ready" if audit_input.observations else "Draft",
+    )
+    recovered.update(_audit_stats(audit_input))
+    recovered.update(get_mission_owner_fields(owner_user))
+    recovered["parsing_status"] = "parsed"
+    recovered["audit_input_json"] = audit_input.model_dump_json()
+    recovered["audit_input_cache_key"] = _audit_input_cache_key(audit_input)
+    _write_json(_mission_path(mission_id), recovered)
+    return recovered
+
+
 def _audit_stats(audit_input: StructuredAuditInput) -> dict[str, int]:
     observations = audit_input.observations or []
-    applications = {
+    scoped_applications = {
+        application.strip()
+        for application in audit_input.mission.applications or []
+        if application.strip()
+    }
+    observation_applications = {
         (observation.application or "").strip()
         for observation in observations
         if (observation.application or "").strip()
@@ -120,7 +159,7 @@ def _audit_stats(audit_input: StructuredAuditInput) -> dict[str, int]:
     }
     return {
         "observations_count": len(observations),
-        "applications_count": len(applications or set(audit_input.mission.applications or [])),
+        "applications_count": len(scoped_applications or observation_applications),
         "control_ids_count": len(control_ids),
     }
 
@@ -146,6 +185,13 @@ def _count_validated_observations(audit_input: StructuredAuditInput | None) -> t
         if str(observation.statut_validation or "").strip().lower() == "validated"
     )
     return validated_count, len(observations)
+
+
+def _audit_input_cache_key(audit_input: StructuredAuditInput | None) -> str:
+    if audit_input is None:
+        return "sql-audit:"
+    payload = audit_input.model_dump_json()
+    return f"sql-audit:{hashlib.sha1(payload.encode('utf-8')).hexdigest()}"
 
 
 def _load_report_cache_metadata(mission_id: str) -> dict | None:
@@ -186,11 +232,24 @@ def _build_mission_workflow(mission: dict) -> dict:
         user_id=str(mission.get("owner_user_id") or "").strip() or None,
     )
     validated_count, total_observations = _count_validated_observations(audit_input)
-    has_uploaded_workbook = bool(mission.get("uploaded_file_name"))
     has_observations = (mission.get("observations_count") or 0) > 0
     all_observations_validated = total_observations > 0 and validated_count == total_observations
     report_generated = _has_current_report_cache(mission_id)
     exported_at = mission.get("exported_at")
+    has_parsed_source_data = (
+        str(mission.get("parsing_status") or "").strip().lower() == "parsed"
+        and audit_input is not None
+        and has_observations
+    )
+    # Workflow milestones are monotonic: durable parsed data or a completed
+    # downstream deliverable proves that the source-data step already occurred.
+    has_uploaded_workbook = bool(
+        mission.get("uploaded_file_name")
+        or has_parsed_source_data
+        or all_observations_validated
+        or report_generated
+        or exported_at
+    )
 
     step_states = [
         {
@@ -308,6 +367,12 @@ def _build_mission_workflow(mission: dict) -> dict:
 def _enrich_mission(mission: dict) -> dict:
     enriched = dict(mission)
     enriched["invited_auditor_emails"] = _normalize_invited_emails(enriched.get("invited_auditor_emails"))
+    audit_input = load_mission_audit_input(
+        str(enriched.get("mission_id") or ""),
+        user_id=str(enriched.get("owner_user_id") or "").strip() or None,
+    )
+    if audit_input is not None:
+        enriched.update(_audit_stats(audit_input))
     enriched["workflow"] = _build_mission_workflow(mission)
     return enriched
 
@@ -518,7 +583,10 @@ def get_mission(
             user_role=resolved_user_role,
         )
         return _enrich_mission(mission) if mission else None
-    mission = _load_mission_record(mission_id)
+    mission = _load_mission_record(mission_id) or _recover_mission_record_from_audit_input(
+        mission_id,
+        owner_user=user,
+    )
     if mission is None:
         return None
     mission = _adopt_mission_for_matching_email(mission_id, mission, resolved_user_id)
@@ -584,6 +652,8 @@ def update_mission(
         "owner_user_id",
         "owner_email",
         "invited_auditor_emails",
+        "audit_input_json",
+        "audit_input_cache_key",
     }
     nullable_fields = {"uploaded_file_name", "report_generated_at", "exported_at"}
     for key, value in payload.items():
@@ -592,12 +662,13 @@ def update_mission(
     mission["invited_auditor_emails"] = _normalize_invited_emails(mission.get("invited_auditor_emails"))
 
     mission["updated_at"] = _timestamp()
-    _write_json(_mission_path(mission_id), mission)
     if azure_sql_enabled():
         updated = update_sql_mission(mission_id, mission, user_id=resolved_user_id)
         if updated is None:
             raise ValueError(f"Mission '{mission_id}' was not found.")
         mission = updated
+    else:
+        _write_json(_mission_path(mission_id), mission)
     current_status = str(mission.get("status") or "").strip()
     status_changed_by_user = (
         "status" in payload
@@ -716,8 +787,17 @@ def save_mission_audit_input(
     *,
     user_id: str | None = None,
 ) -> dict:
-    mission = _load_mission_record(mission_id)
-    if mission is not None:
+    if azure_sql_enabled():
+        user = get_user_by_id(user_id) if user_id else None
+        mission = get_sql_mission(
+            mission_id,
+            user_id=user_id,
+            user_email=_user_email(user) or None,
+            user_role=_user_role(user) or None,
+        )
+    else:
+        mission = _load_mission_record(mission_id)
+    if mission is not None and not azure_sql_enabled():
         mission = _adopt_mission_for_matching_email(mission_id, mission, user_id)
     if mission is None:
         raise ValueError(f"Mission '{mission_id}' was not found.")
@@ -746,6 +826,8 @@ def save_mission_audit_input(
         "parsing_status": "parsed",
         "report_generated_at": None,
         "exported_at": None,
+        "audit_input_json": audit_input.model_dump_json(),
+        "audit_input_cache_key": _audit_input_cache_key(audit_input),
     }
     updated_fields["status"] = "Ready" if stats["observations_count"] > 0 else "Draft"
 
@@ -771,19 +853,52 @@ def load_mission_audit_input(mission_id: str, *, user_id: str | None = None) -> 
     mission = _load_mission_record(mission_id)
     if mission is not None:
         mission = _adopt_mission_for_matching_email(mission_id, mission, user_id)
-    if mission is None or not _mission_data_accessible_by(mission, user_id):
-        return None
     path = _audit_input_path(mission_id)
-    if not path.exists():
+    local_access_allowed = mission is not None and (
+        _mission_owned_by(mission, user_id) or _mission_data_accessible_by(mission, user_id)
+    )
+    if local_access_allowed and path.exists():
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return StructuredAuditInput.model_validate(payload)
+
+    if azure_sql_enabled():
+        user = get_user_by_id(user_id) if user_id else None
+        return load_sql_audit_input(
+            mission_id,
+            user_id=user_id,
+            user_email=_user_email(user) or None,
+            user_role=_user_role(user) or None,
+        )
+
+    if not local_access_allowed:
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    return StructuredAuditInput.model_validate(payload)
+    return None
 
 
 def load_mission_report_cache(mission_id: str, *, user_id: str | None = None) -> dict | None:
     mission = _load_mission_record(mission_id)
     if mission is not None:
         mission = _adopt_mission_for_matching_email(mission_id, mission, user_id)
+    if azure_sql_enabled():
+        user = get_user_by_id(user_id) if user_id else None
+        mission = get_sql_mission(
+            mission_id,
+            user_id=user_id,
+            user_email=_user_email(user) or None,
+            user_role=_user_role(user) or None,
+        )
+        if mission is None:
+            return None
+        result = load_latest_report_version(mission_id)
+        if result is None:
+            return None
+        expected_mtime = str(mission.get("audit_input_cache_key") or "").strip()
+        if not expected_mtime:
+            expected_mtime = _audit_input_cache_key(load_mission_audit_input(mission_id, user_id=user_id))
+        if result.get("audit_input_mtime_ns") != expected_mtime:
+            return None
+        return result
+
     if mission is None or not _mission_data_accessible_by(mission, user_id):
         return None
     path = _report_cache_path(mission_id)
@@ -799,6 +914,63 @@ def save_mission_report_cache(mission_id: str, result: dict, *, user_id: str | N
     mission = _load_mission_record(mission_id)
     if mission is not None:
         mission = _adopt_mission_for_matching_email(mission_id, mission, user_id)
+
+    if azure_sql_enabled():
+        user = get_user_by_id(user_id) if user_id else None
+        mission = get_sql_mission(
+            mission_id,
+            user_id=user_id,
+            user_email=_user_email(user) or None,
+            user_role=_user_role(user) or None,
+        )
+        if mission is None:
+            raise ValueError(f"Mission '{mission_id}' was not found.")
+
+        audit_input_mtime_ns = str(mission.get("audit_input_cache_key") or "").strip()
+        if not audit_input_mtime_ns:
+            audit_input_mtime_ns = _audit_input_cache_key(load_mission_audit_input(mission_id, user_id=user_id))
+        payload = {
+            "cached_at": _timestamp(),
+            "audit_input_mtime_ns": audit_input_mtime_ns,
+            "result": result,
+        }
+        quality_gate = result.get("structured_output", {}).get("quality_gate")
+        save_report_version(
+            mission_id,
+            cached_at=payload["cached_at"],
+            audit_input_mtime_ns=str(payload["audit_input_mtime_ns"]),
+            structured_output=result.get("structured_output", {}),
+            quality_gate=quality_gate if isinstance(quality_gate, dict) else None,
+        )
+        updated_mission = update_mission(
+            mission_id,
+            {
+                "report_generated_at": payload["cached_at"],
+                "status": "Ready",
+            },
+            user_id=user_id,
+        )
+        actor = get_user_by_id(user_id) if user_id else None
+        create_notifications(
+            recipients=mission_recipients(updated_mission),
+            type="report_generated",
+            title="Report draft ready",
+            message=f"The report draft for mission {updated_mission.get('name') or mission_id} is ready for review.",
+            mission_id=mission_id,
+            related_entity_type="report",
+            related_entity_id=mission_id,
+            actor=actor,
+        )
+        log_security_event(
+            action="REPORT_GENERATED",
+            user=actor,
+            mission_id=mission_id,
+            resource_type="report",
+            resource_id=mission_id,
+            metadata={"cached_at": payload["cached_at"]},
+        )
+        return result
+
     if mission is None:
         raise ValueError(f"Mission '{mission_id}' was not found.")
     if not _mission_data_accessible_by(mission, user_id):

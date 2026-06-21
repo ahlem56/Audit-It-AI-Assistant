@@ -44,6 +44,8 @@ REPORT_EMAIL_USE_TLS = os.getenv("REPORT_EMAIL_USE_TLS", "true").lower() == "tru
 REPORT_EMAIL_SENDER = os.getenv("REPORT_EMAIL_SENDER", REPORT_EMAIL_SMTP_USERNAME or "bouchahouaahlem@gmail.com")
 REPORT_EMAIL_SENDER_NAME = os.getenv("REPORT_EMAIL_SENDER_NAME", "Ahlem Bouchahoua")
 REPORT_EMAIL_DEFAULT_TO = os.getenv("REPORT_EMAIL_DEFAULT_TO", "ahlem.bouchahoua@esprit.tn")
+WINDOWS_EXPORT_SERVICE_URL = os.getenv("WINDOWS_EXPORT_SERVICE_URL", "").strip().rstrip("/")
+WINDOWS_EXPORT_SERVICE_TIMEOUT_SECONDS = int(os.getenv("WINDOWS_EXPORT_SERVICE_TIMEOUT_SECONDS", "900"))
 
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "false").lower() == "true"
 AUTH_FRONTEND_BASE_URL = os.getenv("AUTH_FRONTEND_BASE_URL", "http://localhost:4173").rstrip("/")

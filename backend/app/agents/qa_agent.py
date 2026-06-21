@@ -10,7 +10,10 @@ from app.services.retrieval_service import retrieve_documents
 from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
 
 _OBSERVATION_ID_RE = re.compile(r"\bOBS-\d+\b", re.IGNORECASE)
-_TOP_RISKS_RE = re.compile(r"\b(top\s*risks?|principaux?\s+risques?|risques?\s+majeurs?)\b", re.IGNORECASE)
+_TOP_RISKS_RE = re.compile(
+    r"\b(top\s*risks?|key\s*risks?|principaux?\s+risques?|risques?\s+(?:majeurs?|cl[eé]s?))\b",
+    re.IGNORECASE,
+)
 _INSUFFICIENT_EVIDENCE = "The available context does not provide enough evidence to answer this conclusively."
 _MISSION_INSUFFICIENT_EVIDENCE = "The selected mission does not provide enough evidence to answer this conclusively."
 

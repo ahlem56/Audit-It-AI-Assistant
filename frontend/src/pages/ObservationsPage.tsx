@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, Plus, Trash2, X } from 'lucide-react';
+import { CheckCircle2, MessageSquare, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
 import PriorityBadge from '../components/PriorityBadge';
 import { useMissionContext } from '../context/MissionContext';
 import type { Observation, PriorityLevel } from '../types';
@@ -35,6 +35,7 @@ export default function ObservationsPage() {
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null);
   const [localObservations, setLocalObservations] = useState<Observation[]>(observations);
   const [saving, setSaving] = useState(false);
+  const [validatingAll, setValidatingAll] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<'All' | PriorityLevel>('All');
@@ -93,6 +94,26 @@ export default function ObservationsPage() {
       console.error('Failed to save observations:', error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleValidateAll = async () => {
+    const validatedObservations = localObservations.map((observation) => ({
+      ...observation,
+      status: 'Validated',
+      statut_validation: 'Validated'
+    }));
+
+    setValidatingAll(true);
+    setLocalObservations(validatedObservations);
+
+    try {
+      await updateObservations(validatedObservations);
+    } catch (error) {
+      console.error('Failed to validate all observations:', error);
+      setLocalObservations(localObservations);
+    } finally {
+      setValidatingAll(false);
     }
   };
 
@@ -179,37 +200,63 @@ export default function ObservationsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="pwc-kicker">Observations</p>
-          <h1 className="pwc-title mt-2 text-4xl font-semibold">Observation register</h1>
-          <p className="mt-2 text-sm text-slate-500">{activeMission.name}</p>
+    <div className="observations-studio space-y-6">
+      <section className="observations-studio-hero">
+        <div className="observations-studio-brand">
+          <span>Observations</span>
+          <strong>{activeMission.client || 'Client'} / {activeMission.fiscal_year || 'FY'}</strong>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={() => navigate('/chat')} className="pwc-action-dark">
-            Open mission chat
+
+        <div className="observations-studio-command">
+          <div>
+            <h1>Observation control register.</h1>
+            <p>{activeMission.name}</p>
+          </div>
+        </div>
+
+        <div className="observations-studio-hero-footer">
+          <span>{totalSummary}</span>
+          <div className="observations-studio-actions">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || validatingAll}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#c74634] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b23d2d] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? 'Saving...' : 'Save changes'}
+          </button>
+          <button
+            type="button"
+            onClick={handleValidateAll}
+            disabled={validatingAll || saving || recalculating || localObservations.length === 0}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {validatingAll ? 'Validating...' : 'Validate all'}
           </button>
           <button
             type="button"
             onClick={handleRecalculate}
-            disabled={recalculating}
-            className="pwc-action-primary disabled:opacity-50"
+            disabled={recalculating || validatingAll || saving}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-orange-200 bg-[#fff3eb] px-4 py-3 text-sm font-semibold text-[#c74634] transition hover:bg-[#ffe5d6] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {recalculating ? 'Recalculating...' : 'Recalculate Priorities'}
+            <RefreshCcw className={`h-4 w-4 ${recalculating ? 'animate-spin' : ''}`} />
+            {recalculating ? 'Recalculating...' : 'Recalculate'}
           </button>
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-2xl bg-[#c74634] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#b23d2d] disabled:opacity-50"
+            onClick={() => navigate('/chat')}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            <MessageSquare className="h-4 w-4" />
+            Mission chat
           </button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <section className="pwc-main-panel">
+      <section className="observations-studio-panel">
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_auto]">
           <label className="space-y-2 text-sm text-slate-700">
             Search
@@ -262,7 +309,7 @@ export default function ObservationsPage() {
         </div>
       </section>
 
-      <div className="flex items-center justify-between px-1">
+      <div className="observations-studio-summary">
         <p className="text-sm text-slate-600">{totalSummary}</p>
         <p className="text-sm text-slate-500">{filteredObservations.length} visible</p>
       </div>
@@ -272,7 +319,7 @@ export default function ObservationsPage() {
           <article
             key={observation.id}
             onClick={() => setSelectedObservationId(observation.id)}
-            className="group cursor-pointer rounded-[2rem] border border-slate-200 bg-white/88 p-6 shadow-[0_16px_44px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-[#ef5b0c]/30"
+            className="observations-studio-entry group cursor-pointer"
           >
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0 flex-1">
@@ -327,7 +374,7 @@ export default function ObservationsPage() {
       />
 
       <aside
-        className={`fixed right-0 top-0 z-50 h-screen w-full max-w-[480px] overflow-y-auto border-l border-white/70 bg-[linear-gradient(180deg,rgba(255,248,242,0.96),rgba(255,255,255,0.92))] shadow-2xl transition-transform duration-300 ${
+        className={`observations-studio-drawer fixed right-0 top-0 z-50 h-screen w-full max-w-[480px] overflow-y-auto border-l border-white/70 shadow-2xl transition-transform duration-300 ${
           selectedObservation ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

@@ -49,6 +49,17 @@ def _priority_rank(priority: str) -> int:
     return order.get(priority, 99)
 
 
+def _process_rank(process: str) -> int:
+    order = {"APD": 0, "PC": 1, "CO": 2}
+    code = (process or "").split("-", 1)[0].strip().upper()
+    if code not in order:
+        for candidate, label in PROCESS_LABELS.items():
+            if process == label:
+                code = candidate
+                break
+    return order.get(code, 99)
+
+
 def _format_priority(priority: str) -> str:
     return PRIORITY_LABELS.get(priority, priority)
 
@@ -193,7 +204,7 @@ def _reference_scores(observation: AuditObservation) -> dict[str, int]:
         "APD-03": (
             ("superuser", "teller_admin", "compte generique", "compte partage", "compte commun", "shared account", "generic account", "absence de tracabilite", "tracabilite individuelle"),
             ("privilegie", "privilege", "journalisation", "tracabilite", "interactive", "interactif", "validation", "annulation", "swift_opr", "operateur swift", "operateurs swift", "droits etendus"),
-            (),
+            ("comptes a droits etendus", "droits etendus", "comptes generiques", "comptes privilegies"),
         ),
         "APD-04": (
             ("recertification", "re certification"),
@@ -233,7 +244,7 @@ def _reference_scores(observation: AuditObservation) -> dict[str, int]:
         "CO-03": (
             ("prestataire", "prestations externalisees", "fournisseur", "third party"),
             ("isae 3402", "soc 2", "sla", "kpi", "comite de pilotage", "comite de gouvernance", "second niveau"),
-            (),
+            ("supervision des prestations externalisees", "prestations externalisees"),
         ),
         "CO-05": (
             ("plan de reprise", "plan de continuite", "reprise apres sinistre", "continuite informatique"),
@@ -266,34 +277,15 @@ def _reference_scores(observation: AuditObservation) -> dict[str, int]:
 def _resolve_effective_reference_with_reason(observation: AuditObservation) -> tuple[str, str]:
     original = (observation.controle_ref or "").upper().strip()
     original_valid = original in CONTROL_CATALOG
+    if original_valid:
+        return original, "Original reference kept exactly as provided by the audit input."
+
     scores = _reference_scores(observation)
 
-    if original_valid:
-        scores[original] = scores.get(original, 0) + 3
-
     if not scores:
-        if original_valid:
-            return original, "Original reference kept: no stronger keyword evidence was detected."
         return original, "Original reference kept: no keyword evidence was available for remapping."
 
     best_reference, best_score = max(scores.items(), key=lambda item: item[1])
-    original_score = scores.get(original, 0)
-    same_process = _reference_process(best_reference) == _reference_process(original)
-
-    if best_reference == original:
-        return original, "Original reference confirmed by keyword evidence in the observation."
-
-    if original_valid and not same_process and best_score < original_score + 3:
-        return original, f"Original reference kept to avoid cross-process over-remapping; strongest alternate signal was {best_reference}."
-
-    if original_valid and same_process and best_score < original_score + 2:
-        return original, f"Original reference kept because alternate evidence toward {best_reference} was not materially stronger."
-
-    if original_valid and best_score < 4:
-        return original, f"Original reference kept because the remapping evidence toward {best_reference} was too weak."
-
-    if original_valid:
-        return best_reference, f"Reference remapped from {original} to {best_reference} based on stronger keyword evidence in the title and observation details."
     return best_reference, f"Reference inferred as {best_reference} because the original reference was missing or unsupported."
 
 
@@ -398,20 +390,22 @@ def _derive_business_impact(observation: AuditObservation, reference: str = "") 
     )
     ref = (reference or observation.controle_ref or "").upper().strip()
 
-    if ref in {"APD-01", "APD-02", "APD-09"} or "post-depart" in text or "depart" in text or "actif" in text:
+    if ref == "APD-03" or any(k in text for k in ("recertification", "fonctions incompatibles", "4 yeux", "quatre yeux")):
+        return "Maintien de droits excessifs ou incompatibles pouvant permettre la saisie et validation d'operations sans controle independant, notamment sur les processus metier sensibles."
+    if ref == "APD-04" or any(k in text for k in ("mot de passe", "mfa", "authentification", "brute force")):
+        return "Compromission potentielle de comptes utilisateurs ou clients en raison de parametres d'authentification insuffisants sur un service sensible."
+    if ref == "CO-04" or any(k in text for k in ("patch", "correctif", "vulnerabil", "cve", "cvss")):
+        return "Exploitation potentielle de vulnerabilites connues, compromission de services exposes et interruption ou alteration de traitements clients."
+    if ref in {"APD-01", "APD-02", "APD-05", "APD-09"} or "post-depart" in text or "depart" in text or "actif" in text:
         if any(k in text for k in ("fort encours", "operation", "mouvement", "virement", "client")):
             return "Operations non legitimes ou consultation de donnees clients sensibles, avec perte de tracabilite sur des comptes a fort enjeu metier."
         if any(k in text for k in ("paie", "remuneration", "donnees personnelles")):
             return "Consultation ou modification non autorisee de donnees RH et de paie, avec exposition de donnees personnelles sensibles."
         return "Utilisation non autorisee de comptes residuels, fuite de donnees sensibles et perte de responsabilisation des actions realisees."
-    if ref == "APD-03" or any(k in text for k in ("compte generique", "compte partage", "superuser", "teller_admin", "privilegie")):
+    if any(k in text for k in ("compte generique", "compte partage", "superuser", "teller_admin", "privilegie")):
         return "Actions sensibles non attribuables individuellement, contournement possible de la segregation des taches et risque de manipulation non autorisee des operations ou parametres critiques."
-    if ref == "APD-04" or any(k in text for k in ("recertification", "fonctions incompatibles", "4 yeux", "quatre yeux")):
-        return "Maintien de droits excessifs ou incompatibles pouvant permettre la saisie et validation d'operations sans controle independant, notamment sur les processus metier sensibles."
     if ref == "CO-05" or any(k in text for k in ("pra", "pca", "rpo", "rto", "basculement")):
         return "Indisponibilite prolongee des services critiques et incapacite a confirmer le respect des objectifs RTO/RPO en cas de sinistre."
-    if ref == "CO-08" or any(k in text for k in ("patch", "correctif", "vulnerabil", "cve", "cvss")):
-        return "Exploitation potentielle de vulnerabilites connues, compromission de services exposes et interruption ou alteration de traitements clients."
     if "validation" in text or "autorisation" in text:
         return "Non-conformite aux procedures internes et atteinte a l'integrite des donnees."
     if "sauvegarde" in text or "restauration" in text or "backup" in text:
@@ -534,6 +528,7 @@ def _derive_root_cause(observation: AuditObservation, reference: str) -> str:
     if explicit:
         return explicit
 
+    ref = (reference or "").upper().strip()
     text = _keyword_text(
         reference,
         observation.titre_observation,
@@ -541,12 +536,16 @@ def _derive_root_cause(observation: AuditObservation, reference: str) -> str:
         observation.procedure_compensatoire,
         observation.commentaire_auditeur,
     )
+    if ref == "APD-03" or any(k in text for k in ("recertification", "revue des acces", "fonctions incompatibles", "4 yeux", "quatre yeux")):
+        return "Absence de campagne formelle de recertification des droits, de validation metier et de suivi documente des corrections de segregation des fonctions."
+    if ref == "CO-04" or any(k in text for k in ("patch", "correctif", "cve", "cvss", "vulnerabil")):
+        return "Absence de processus accelere de priorisation et de deploiement des correctifs critiques, avec suivi des exceptions et acceptation formelle du risque."
+    if ref == "APD-05" or any(k in text for k in ("prestataire", "fin de mission", "sudo", "contrat prestataire")):
+        return "Absence de rapprochement formel entre contrats prestataires, tickets de fin de mission et comptes techniques actifs, incluant la revue des droits d'administration."
     if any(k in text for k in ("post-depart", "post depart", "apres depart", "depart", "revocation")):
         return "Absence de processus formalise, tracable et systematique de rapprochement entre mouvements RH et desactivation effective des comptes."
     if any(k in text for k in ("compte generique", "compte partage", "privilegie", "superuser")):
         return "Absence de gouvernance formelle des comptes generiques et privilegies, incluant justification, journalisation et revue periodique des usages."
-    if any(k in text for k in ("recertification", "revue des acces", "fonctions incompatibles")):
-        return "Absence de campagne formelle de recertification des droits et de suivi documente des corrections d'habilitations."
     if any(k in text for k in ("mot de passe", "mfa", "authentification")):
         return "Parametrage de securite insuffisamment aligne avec les exigences internes et les bonnes pratiques applicables."
     if any(k in text for k in ("cab", "changement", "rfc", "mise en production")):
@@ -559,10 +558,13 @@ def _derive_root_cause(observation: AuditObservation, reference: str) -> str:
 
 
 def _expected_control_text(observation: AuditObservation) -> str:
+    explicit = _first_non_empty(observation.controle_attendu, observation.categorie_controle)
+    if explicit:
+        return explicit
     catalog_control = CONTROL_CATALOG.get(observation.controle_ref.upper())
     if catalog_control and catalog_control.get("description"):
         return catalog_control["description"]
-    return observation.controle_attendu or observation.titre_observation
+    return observation.titre_observation
 
 
 def _impact_level(observation: AuditObservation) -> str:
@@ -583,6 +585,9 @@ def _impact_level(observation: AuditObservation) -> str:
         "production",
         "transaction critique",
         "droit sensible",
+        "prestataire",
+        "sudo",
+        "administration",
     )
     medium_markers = ("incident", "sla", "mot de passe", "parametrage", "revue", "recertification")
     if any(marker in text for marker in high_markers):
@@ -705,6 +710,39 @@ def _catalog_recommendation(reference: str) -> str:
 
 
 def _recommendation_owner(observation: AuditObservation) -> str:
+    raw_owner = _first_non_empty(observation.responsables)
+    if raw_owner:
+        parts = []
+        provider_from_app = ""
+        app_text = _keyword_text(observation.application)
+        if "sopra" in app_text:
+            provider_from_app = "Sopra Banking Software"
+        elif "ibs" in app_text or "openbanking" in app_text:
+            provider_from_app = "IBS Group"
+
+        for part in re.split(r"\s*/\s*|\s*;\s*", raw_owner):
+            value = " ".join(part.split()).strip()
+            if not value:
+                continue
+            lowered = _keyword_text(value)
+            if "bilel rezgui" in lowered or lowered == "rssi":
+                continue
+            parts.append(value)
+        if provider_from_app and all(_keyword_text(provider_from_app) != _keyword_text(part) for part in parts):
+            parts.append(provider_from_app)
+
+        preferred_order = ("DSI", "Direction des Engagements", "Direction RH", "DRH", "Direction Digitale", "Direction des Risques", "Direction Générale")
+        ordered: list[str] = []
+        for preferred in preferred_order:
+            for part in parts:
+                if _keyword_text(preferred) in _keyword_text(part) and part not in ordered:
+                    ordered.append(part)
+        for part in parts:
+            if part not in ordered:
+                ordered.append(part)
+        if ordered:
+            return " / ".join(ordered)
+
     text = _keyword_text(observation.application, observation.titre_observation, observation.constat, observation.categorie_controle)
     if any(k in text for k in ("rh", "paie", "hr access")):
         return "les equipes RH et IT"
@@ -718,12 +756,12 @@ def _recommendation_owner(observation: AuditObservation) -> str:
 def _recommendation_evidence(reference: str) -> str:
     prefix = (reference or "").split("-", 1)[0].strip().upper()
     if prefix == "APD":
-        return "conserver les validations, revues et journaux d'execution associes"
+        return "revues d'habilitations, validations metier et journaux d'execution"
     if prefix == "PC":
-        return "conserver les preuves de recette, d'approbation et de mise en production"
+        return "demandes approuvees, preuves de recette, analyses d'impact et autorisations de mise en production"
     if prefix == "CO":
-        return "conserver les journaux, indicateurs, comptes rendus et preuves de tests associes"
-    return "conserver une piste d'audit complete des actions de remediation"
+        return "journaux d'exploitation, indicateurs de suivi, comptes rendus et preuves de tests"
+    return "piste d'audit complete des actions de remediation"
 
 
 def _build_contextual_recommendation(observation: AuditObservation, reference: str) -> str:
@@ -746,23 +784,23 @@ def _build_contextual_recommendation(observation: AuditObservation, reference: s
         )
     if reference == "APD-02":
         return _clean_sentence(
-            "Formaliser et automatiser le processus de revocation des acces sur l'ensemble des couches applicatives et techniques a la suite des departs ou mobilites, "
-            f"avec suivi des comptes residuels, revue periodique et validation par {owner}; {evidence}."
+            "Revoir les comptes generiques, partages ou privilegies, supprimer les droits non justifies et rattacher chaque usage sensible a un utilisateur nominatif. "
+            f"Mettre en place une journalisation exploitable, une revue periodique des usages et, lorsque pertinent, un dispositif PAM sous pilotage de {owner}; {evidence}."
         )
     if reference == "APD-03":
-        return _clean_sentence(
-            "Reduire strictement l'usage des comptes generiques ou privilegies, mettre en place des comptes nominatifs lorsque cela est possible, "
-            f"renforcer la journalisation et instaurer une revue periodique formelle des usages par {owner}; {evidence}."
-        )
-    if reference == "APD-04":
         return _clean_sentence(
             "Mettre en oeuvre une campagne formelle et periodique de recertification des acces couvrant l'exhaustivite des comptes, profils et droits sensibles, "
             f"avec validation par les managers, correction des incompatibilites et suivi documente des plans d'action par {owner}; {evidence}."
         )
-    if reference == "APD-05":
+    if reference == "APD-04":
         return _clean_sentence(
             "Aligner la politique d'authentification sur les exigences internes et reglementaires en renforcant les parametres de mots de passe, "
-            f"en deployant des mecanismes de verrouillage et, lorsque pertinent, une authentification forte sur les operations sensibles; {evidence}."
+            f"en deployant le MFA sur les operations sensibles, l'historique des mots de passe, le verrouillage et la detection des tentatives suspectes; {evidence}."
+        )
+    if reference == "APD-05":
+        return _clean_sentence(
+            f"Formaliser la gestion des acces prestataires depuis l'entree en mission jusqu'a la revocation, avec rapprochement entre contrats, tickets de fin de mission et comptes actifs. "
+            f"Supprimer les comptes residuels, limiter les droits d'administration et documenter les exceptions sous pilotage de {owner}; {evidence}."
         )
     if reference == "PC-01":
         return _clean_sentence(
@@ -791,8 +829,8 @@ def _build_contextual_recommendation(observation: AuditObservation, reference: s
         )
     if reference in {"CO-04", "CO-08"}:
         return _clean_sentence(
-            "Mettre en place un pilotage renforce des configurations de securite et des correctifs, avec suivi par criticite, validation des exceptions, "
-            f"fenetres de maintenance definies et reporting periodique au management; {evidence}."
+            "Mettre en place un processus de patch management priorise par criticite CVSS, avec circuit accelere pour les correctifs critiques, "
+            f"analyse d'impact, fenetres de maintenance adaptees, validation formelle des exceptions et reporting periodique au management; {evidence}."
         )
 
     if base:
@@ -848,18 +886,30 @@ def _build_recommendation_components(observation: AuditObservation, reference: s
             "et accuse de prise en charge par les equipes IT."
         )
         follow_up = "Suivre mensuellement les comptes post-depart, les delais de desactivation et les exceptions ouvertes jusqu'a regularisation."
+        if ref == "APD-02":
+            immediate = "Revoir les comptes generiques ou privilegies identifies, supprimer les droits non justifies et documenter les usages maintenus."
+            structural = "Basculer vers des comptes nominatifs ou un dispositif PAM lorsque possible, avec journalisation et revue periodique des activites sensibles."
+            follow_up = "Produire une revue periodique des usages privilegies et des connexions atypiques, validee par le responsable applicatif."
     elif ref == "APD-03":
-        immediate = "Revoir les comptes generiques ou privilegies identifies, supprimer les droits non justifies et documenter les usages maintenus."
-        structural = "Basculer vers des comptes nominatifs ou un dispositif PAM lorsque possible, avec journalisation et revue periodique des activites sensibles."
-        follow_up = "Produire une revue periodique des usages privilegies et des connexions atypiques, validee par le responsable applicatif."
-    elif ref == "APD-04":
         immediate = "Lancer une revue ciblee des droits sensibles et corriger les cas de droits excessifs ou incompatibles identifies."
         structural = "Instituer une campagne de recertification periodique couvrant comptes, profils et droits sensibles, avec validation manager/metier."
         follow_up = "Suivre les validations, refus, corrections et exceptions dans un tableau de bord de remediations."
+    elif ref == "APD-04":
+        immediate = "Corriger les parametres d'authentification non conformes identifies et activer le MFA sur les operations sensibles."
+        structural = "Aligner la politique de mots de passe et d'authentification sur les exigences internes, BCT/NIST et bonnes pratiques, incluant MFA, historique et verrouillage."
+        follow_up = "Suivre les exceptions de parametrage, les tentatives suspectes et la mise en conformite des applications exposees."
+    elif ref == "APD-05":
+        immediate = "Desactiver les comptes prestataires residuels et documenter les exceptions strictement necessaires."
+        structural = "Formaliser le rapprochement entre contrats prestataires, tickets de fin de mission et comptes actifs, avec limitation des droits d'administration."
+        follow_up = "Suivre les comptes prestataires actifs, les droits sudo et les exceptions jusqu'a regularisation."
     elif ref.startswith("PC"):
         immediate = "Revoir les changements non conformes identifies et documenter a posteriori les validations, tests et risques residuels."
         structural = "Bloquer les mises en production sans demande approuvee, preuve de recette, analyse d'impact et plan de retour arriere."
         follow_up = "Suivre mensuellement le taux de changements deployes avec dossier complet et les exceptions validees."
+        if ref == "PC-02":
+            immediate = "Revoir les acces cumules aux environnements de developpement et production et supprimer ou formaliser les derogations non justifiees."
+            structural = "Renforcer la separation des environnements, les profils incompatibles et les controles de segregation des taches sur les applications concernees."
+            follow_up = "Suivre les derogations SoD, les acces cumules residuels et les revues periodiques des profils sensibles."
     elif ref in {"CO-01", "CO-05", "CO-07"}:
         immediate = "Planifier un test cible de restauration ou de reprise sur le perimetre concerne et documenter les resultats."
         structural = "Formaliser un calendrier de tests, des scenarios couvrant les applications critiques et les criteres d'acceptation RTO/RPO."
@@ -868,16 +918,20 @@ def _build_recommendation_components(observation: AuditObservation, reference: s
         immediate = "Centraliser les incidents ouverts, qualifier leur criticite et documenter les analyses de cause racine des incidents majeurs."
         structural = "Deployer ou formaliser un outil ITSM avec workflow, SLA par criticite, escalades et tableau de bord de pilotage."
         follow_up = "Revoir periodiquement les delais de resolution, incidents recurrents et RCA non cloturees."
-    elif ref == "CO-08":
+    elif ref == "CO-03":
+        immediate = "Obtenir ou compenser les preuves de controle fournisseur manquantes, notamment SLA/KPI, comites, rapports de controle ou controles de second niveau."
+        structural = "Formaliser le dispositif de pilotage des prestations externalisees avec exigences contractuelles, reporting periodique et revue documentee par la banque."
+        follow_up = "Suivre les SLA/KPI, les plans d'action fournisseur, les comites de gouvernance et les preuves de controle attendues."
+    elif ref in {"CO-04", "CO-08"}:
         immediate = "Prioriser les correctifs critiques en retard et formaliser les exceptions de patching avec acceptation du risque."
-        structural = "Mettre en place un processus de patch management base sur la criticite, avec fenetres de maintenance et reporting."
+        structural = "Mettre en place un processus de patch management base sur la criticite CVSS, avec circuit accelere pour les CVE critiques, fenetres de maintenance et reporting."
         follow_up = "Suivre les delais de correction par criticite et les vulnerabilites depassant les seuils internes."
     else:
         immediate = "Traiter les exceptions identifiees et documenter les actions correctives realisees."
         structural = "Formaliser le controle attendu avec roles, frequence, criteres d'execution et preuves obligatoires."
         follow_up = "Mettre en place un suivi periodique des exceptions, responsables et echeances de remediation."
 
-    evidence_expected = f"{evidence}; conserver les validations, dates de traitement, exceptions et resultats des revues."
+    evidence_expected = f"Produire et archiver les preuves suivantes : {evidence}, avec dates de traitement, responsables et exceptions validees."
     steps = [
         f"Action corrective immediate: {immediate}",
         f"Action structurelle: {structural}",
@@ -1042,6 +1096,30 @@ def _resolve_effective_reference_v2(observation: AuditObservation) -> str:
     return resolved_reference
 
 
+def _guidance_reference(observation: AuditObservation, fallback_reference: str = "") -> str:
+    scores = _reference_scores(observation)
+    if scores:
+        return max(scores.items(), key=lambda item: item[1])[0]
+    fallback = (fallback_reference or observation.controle_ref or "").upper().strip()
+    return fallback if fallback in CONTROL_CATALOG else fallback
+
+
+def _application_key(value: str) -> str:
+    return _keyword_text(value).replace("/", " ")
+
+
+def _canonical_application_name(application: str, scope_applications: list[str]) -> str:
+    raw = (application or "").strip()
+    if not raw:
+        return ""
+    raw_key = _application_key(raw)
+    for scoped in scope_applications:
+        scoped_key = _application_key(scoped)
+        if scoped_key and (scoped_key in raw_key or raw_key in scoped_key):
+            return scoped
+    return raw
+
+
 def _looks_like_fact_restatement(candidate: str, observation: AuditObservation) -> bool:
     text = " ".join((candidate or "").split()).strip()
     if not text:
@@ -1118,9 +1196,6 @@ def _moderate_priority(reference: str, observation: AuditObservation, priority: 
 
 
 def _moderate_priority_v2(reference: str, observation: AuditObservation, priority: str) -> str:
-    if priority != "Critical":
-        return priority
-
     text = _keyword_text(
         reference,
         observation.titre_observation,
@@ -1129,6 +1204,11 @@ def _moderate_priority_v2(reference: str, observation: AuditObservation, priorit
         observation.categorie_controle,
         observation.impact_potentiel,
     )
+    if priority in {"Low", "Medium"} and any(marker in text for marker in ("prestataire", "fin de mission", "compte prestataire", "sudo", "administration")):
+        return "High"
+    if priority != "Critical":
+        return priority
+
     amount = 0.0
     try:
         amount = max([float(value) for value in _NUM_RE.findall(observation.constat or "")] or [0.0])
@@ -1190,7 +1270,7 @@ def _priority_trigger_reasons(reference: str, observation: AuditObservation) -> 
         reasons.append("segregation between development and production was weakened")
     if ref in {"CO-01", "CO-05", "CO-07"} or any(marker in text for marker in ("plan de reprise", "plan de continuite", "site de secours", "test de restauration", "procedure de restauration", "rpo", "rto")):
         reasons.append("resilience and recovery controls were not tested or not fully documented")
-    if ref == "CO-08" or any(marker in text for marker in ("cve", "cvss", "vulnerabil", "security patch", "patch management")):
+    if ref in {"CO-04", "CO-08"} or any(marker in text for marker in ("cve", "cvss", "vulnerabil", "security patch", "patch management", "correctif")):
         reasons.append("known security vulnerabilities remained exposed beyond policy timelines")
     if ref == "CO-02" or any(marker in text for marker in ("ticketing", "helpdesk", "itsm", "cause racine", "rca")):
         reasons.append("incident response governance and traceability were insufficient")
@@ -1269,6 +1349,7 @@ def _build_detailed_findings(
 
         original_reference = (observation.controle_ref or "").upper().strip()
         effective_reference, resolved_reference_reason = _resolve_effective_reference_with_reason(observation)
+        guidance_reference = effective_reference if original_reference in CONTROL_CATALOG else _guidance_reference(observation, effective_reference)
         reasoning = reasoning_map.get(observation.observation_id)
         priority_reasoning = priority_reasoning_map.get(observation.observation_id)
         inferred_risk = (reasoning.risk if reasoning else "").strip()
@@ -1277,7 +1358,7 @@ def _build_detailed_findings(
         inferred_business_impact = (reasoning.business_impact if reasoning else "").strip()
         inferred_control_impact = (reasoning.control_impact if reasoning else "").strip()
         inferred_compliance_impact = (reasoning.compliance_impact if reasoning else "").strip()
-        inferred_root_cause = (reasoning.root_cause if reasoning else "").strip() or _derive_root_cause(observation, effective_reference)
+        inferred_root_cause = (reasoning.root_cause if reasoning else "").strip() or _derive_root_cause(observation, guidance_reference)
         inferred_aggravating_factors = (reasoning.aggravating_factors if reasoning else []) or []
         inferred_recommendation = (reasoning.recommendation if reasoning else "").strip()
         inferred_objective = (reasoning.recommendation_objective if reasoning else "").strip()
@@ -1309,22 +1390,22 @@ def _build_detailed_findings(
                 inferred_priority_justification = ""
 
         risk_text = inferred_risk or _derive_risk_impact(observation)
-        catalog_risk = _risk_guidance_for_control(effective_reference)
-        if catalog_risk and (not inferred_risk or _risk_seems_off_topic(risk_text, effective_reference)):
+        catalog_risk = _risk_guidance_for_control(guidance_reference)
+        if catalog_risk and (not inferred_risk or _risk_seems_off_topic(risk_text, guidance_reference)):
             risk_text = catalog_risk
         if _looks_like_fact_restatement(risk_text, observation):
             risk_text = _derive_risk_impact(observation)
 
-        impact_text = inferred_impact or _derive_business_impact(observation, effective_reference)
+        impact_text = inferred_impact or _derive_business_impact(observation, guidance_reference)
         if _looks_like_fact_restatement(impact_text, observation):
-            impact_text = _derive_business_impact(observation, effective_reference)
+            impact_text = _derive_business_impact(observation, guidance_reference)
 
-        risk_scenario = inferred_risk_scenario or _derive_risk_scenario(observation, effective_reference, risk_text)
-        deterministic_business_impact = _derive_business_impact(observation, effective_reference)
+        risk_scenario = inferred_risk_scenario or _derive_risk_scenario(observation, guidance_reference, risk_text)
+        deterministic_business_impact = _derive_business_impact(observation, guidance_reference)
         business_impact = inferred_business_impact or impact_text
-        if _business_impact_is_generic(business_impact) or (effective_reference in {"APD-01", "APD-03", "APD-04", "CO-05", "CO-08"} and inferred_business_impact):
+        if _business_impact_is_generic(business_impact) or (guidance_reference in {"APD-01", "APD-03", "APD-04", "CO-05", "CO-08"} and inferred_business_impact):
             business_impact = deterministic_business_impact
-        control_impact = inferred_control_impact or _derive_control_impact(observation, effective_reference)
+        control_impact = inferred_control_impact or _derive_control_impact(observation, guidance_reference)
         compliance_impact = inferred_compliance_impact or _derive_compliance_impact(observation)
         aggravating_factors = [
             str(item).strip() for item in (inferred_aggravating_factors or _derive_aggravating_factors(observation)) if str(item).strip()
@@ -1339,22 +1420,22 @@ def _build_detailed_findings(
 
         reco_ok = False
         if recommendation_text:
-            validation = validate_recommendation(observation.model_copy(update={"controle_ref": effective_reference}), recommendation_text)
+            validation = validate_recommendation(observation.model_copy(update={"controle_ref": guidance_reference}), recommendation_text)
             reco_ok = validation.ok
 
         if not reco_ok:
-            recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": effective_reference}))
+            recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": guidance_reference}))
             reco_objective = ""
             reco_steps = []
 
-        reco_components = _build_recommendation_components(observation, effective_reference)
+        reco_components = _build_recommendation_components(observation, guidance_reference)
         immediate_action = inferred_immediate_action or str(reco_components["immediate_action"])
         structural_action = inferred_structural_action or str(reco_components["structural_action"])
         owner = inferred_owner or str(reco_components["owner"])
         evidence_expected = inferred_evidence_expected or str(reco_components["evidence_expected"])
         follow_up_mechanism = inferred_follow_up_mechanism or str(reco_components["follow_up_mechanism"])
         if not reco_objective:
-            reco_objective = _build_recommendation_objective(observation, effective_reference)
+            reco_objective = _build_recommendation_objective(observation, guidance_reference)
         if not reco_steps:
             reco_steps = list(reco_components["steps"])  # type: ignore[arg-type]
 
@@ -1383,7 +1464,7 @@ def _build_detailed_findings(
         # Final hard-minimum override layer.
         enforced_priority = enforce_min_priority(
             {
-                "controle_ref": effective_reference,
+                "controle_ref": guidance_reference,
                 "reference": effective_reference,
                 "title": observation.titre_observation,
                 "condition": observation.constat,
@@ -1393,7 +1474,7 @@ def _build_detailed_findings(
             },
             priority,
         )
-        priority = _moderate_priority_v2(effective_reference, observation, enforced_priority)
+        priority = _moderate_priority_v2(guidance_reference, observation, enforced_priority)
         priority_mode = _priority_decision_mode(
             base_priority=priority_before_enforcement,
             llm_priority_used=priority_reasoning_ok and inferred_priority in VALID_PRIORITIES,
@@ -1402,7 +1483,7 @@ def _build_detailed_findings(
         )
         escalation_reason = _build_escalation_reason(
             observation=observation,
-            reference=effective_reference,
+            reference=guidance_reference,
             base_priority=priority_before_enforcement,
             final_priority=priority,
             llm_priority_used=priority_reasoning_ok and inferred_priority in VALID_PRIORITIES,
@@ -1416,10 +1497,10 @@ def _build_detailed_findings(
 
         # Priority-aware enforcement: High/Critical must not be generic.
         if priority in {"Critical", "High"}:
-            validation = validate_recommendation(observation.model_copy(update={"controle_ref": effective_reference}), recommendation_text)
+            validation = validate_recommendation(observation.model_copy(update={"controle_ref": guidance_reference}), recommendation_text)
             if (not validation.ok) or "recommendation_generic" in (validation.issues or []):
-                recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": effective_reference}))
-                reco_objective = _build_recommendation_objective(observation, effective_reference)
+                recommendation_text = _build_recommendation_v2(observation.model_copy(update={"controle_ref": guidance_reference}))
+                reco_objective = _build_recommendation_objective(observation, guidance_reference)
                 reco_steps = list(reco_components["steps"])  # type: ignore[arg-type]
                 reco_ok = False
 
@@ -1478,9 +1559,9 @@ def _build_detailed_findings(
                 application=observation.application,
                 layer=observation.couche,
                 owners=observation.responsables,
-                title=_sharpen_title(
-                    observation.titre_observation,
-                    reference=effective_reference,
+                title=_clean_sentence(observation.titre_observation) or _sharpen_title(
+                    observation.categorie_controle,
+                    reference=guidance_reference,
                     constat=observation.constat,
                     category=observation.categorie_controle,
                 ),
@@ -1575,11 +1656,21 @@ def _scoped_control_references(audit_input: StructuredAuditInput) -> list[str]:
     return sorted(_deduplicate(scoped + observed_refs))
 
 
+def _observed_control_references(audit_input: StructuredAuditInput) -> list[str]:
+    refs = [
+        _resolve_effective_reference_v2(observation)
+        for observation in audit_input.observations
+        if _is_reportable_observation(observation)
+    ]
+    return sorted(_deduplicate([ref for ref in refs if ref]))
+
+
 def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[DetailedFinding]) -> list[ControlMatrixEntry]:
     applications = _split_scope_applications(audit_input)
     finding_by_pair: dict[tuple[str, str], DetailedFinding] = {}
     for finding in findings:
-        key = (finding.reference, finding.application)
+        application = _canonical_application_name(finding.application, applications)
+        key = (finding.reference, application)
         current = finding_by_pair.get(key)
         if current is None or _priority_rank(finding.priority) < _priority_rank(current.priority):
             finding_by_pair[key] = finding
@@ -1591,11 +1682,11 @@ def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[Deta
             observed_refs[ref] = observation.model_copy(update={"controle_ref": ref})
 
     entries: list[ControlMatrixEntry] = []
-    for reference in _scoped_control_references(audit_input):
+    for reference in _observed_control_references(audit_input):
         obs = observed_refs.get(reference) or AuditObservation(controle_ref=reference)
         process_code = (reference or "").split("-", 1)[0].strip().upper()
         control_description = _expected_control_text(obs)
-        application_statuses = {application: "Satisfaisant" for application in applications}
+        application_statuses = {application: "Non testé" for application in applications}
         overall_priority = None
 
         for application in applications:
@@ -1613,9 +1704,9 @@ def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[Deta
             effective_ref = _resolve_effective_reference_v2(observation)
             if effective_ref != reference:
                 continue
-            application = (observation.application or "").strip()
+            application = _canonical_application_name(observation.application, applications)
             if application not in application_statuses:
-                application_statuses[application] = "Satisfaisant"
+                application_statuses[application] = "Non testé"
             explicit_status = _normalize_matrix_status(_first_non_empty(observation.statut_controle, observation.statut_validation))
             if explicit_status:
                 application_statuses[application] = explicit_status
@@ -1630,7 +1721,7 @@ def _build_control_matrix(audit_input: StructuredAuditInput, findings: list[Deta
             )
         )
 
-    return sorted(entries, key=lambda item: (item.process, item.reference))
+    return sorted(entries, key=lambda item: (_process_rank(item.reference), item.reference))
 
 
 def _build_key_figures(audit_input: StructuredAuditInput, findings: list[DetailedFinding]) -> list[KeyFigure]:
@@ -1679,7 +1770,7 @@ def _build_watch_points(findings: list[DetailedFinding]) -> list[str]:
     watch_points = []
     for finding in findings[:4]:
         watch_points.append(_clean_sentence(
-            f"{finding.reference} - {finding.title}: {finding.finding}. Impact potentiel: {finding.risk_impact}"
+            f"{finding.reference} - {finding.title} sur {finding.application}: {finding.risk_impact}"
         ))
     return watch_points
 
@@ -2038,7 +2129,8 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
     maturity_level = _derive_maturity_level(findings)
     transversal_initiatives = _build_transversal_initiatives(findings)
 
-    # Covered controls: include catalog controls for the mission + any observed control refs not in the catalog.
+    # Covered controls reflect the input workbook. Do not expand to the whole
+    # internal catalog because client workbooks may use mission-specific refs.
     observed_refs: dict[str, AuditObservation] = {}
     for obs in audit_input.observations:
         ref = _resolve_effective_reference_v2(obs)
@@ -2052,14 +2144,15 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
         prefix = (reference or "").split("-", 1)[0].strip().upper()
         return prefix if prefix in PROCESS_LABELS else ""
 
-    for reference in _scoped_control_references(audit_input):
+    for reference in _observed_control_references(audit_input):
         obs = observed_refs.get(reference) or AuditObservation(controle_ref=reference)
-        item = CONTROL_CATALOG.get(reference, {}) or {}
+        guidance_ref = _guidance_reference(obs, reference)
+        item = CONTROL_CATALOG.get(guidance_ref, {}) or CONTROL_CATALOG.get(reference, {}) or {}
         process = (item.get("process", "") or "").strip() or _infer_process(reference)
         if covered_process_codes and process and process not in covered_process_codes:
             continue
 
-        description = (item.get("description", "") or "").strip() or (obs.controle_attendu or obs.titre_observation or "Contrôle couvert (référence fournie dans l'input).")
+        description = _expected_control_text(obs) or (item.get("description", "") or "").strip() or "Contrôle couvert (référence fournie dans l'input)."
         test_procedure = (item.get("test_procedure", "") or "").strip() or "Procédure de test à définir selon le contrôle et le contexte applicatif."
 
         covered_controls.append(
@@ -2071,7 +2164,7 @@ def compose_audit_report(audit_input: StructuredAuditInput) -> AuditReportOutput
             )
         )
 
-    covered_controls = sorted(covered_controls, key=lambda c: (c.process or "", c.reference))
+    covered_controls = sorted(covered_controls, key=lambda c: (_process_rank(c.reference), c.reference))
 
     table_of_contents = [
         "Cadre de notre intervention et démarche",

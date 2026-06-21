@@ -124,6 +124,7 @@ export default function HomePage() {
     inviteAuditor,
     uploadExcel,
     importM365DriveItem,
+    regenerateReportPreview,
     loadMissions
   } = useMissionContext();
   const canManageMissions = user?.role === 'manager';
@@ -140,6 +141,7 @@ export default function HomePage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitingAuditor, setInvitingAuditor] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [m365Open, setM365Open] = useState(false);
   const [m365Loading, setM365Loading] = useState(false);
@@ -171,7 +173,10 @@ export default function HomePage() {
   }, [createExcelMenuOpen]);
 
   const activeProfile = activeMission ? profiles[activeMission.mission_id] : undefined;
-  const hasUploadedWorkbook = Boolean(activeMission?.current_file?.name);
+  const hasUploadedWorkbook = Boolean(
+    activeMission?.current_file?.name ||
+      (activeMission?.parsing_status === 'parsed' && ((activeMission?.observations_count ?? 0) > 0 || observations.length > 0))
+  );
   const hasObservations = (activeMission?.observations_count ?? observations.length) > 0;
   const activeDisplayTitle = parsedMission?.titre_mission || activeMission?.name || '';
   const activeDisplayClient = parsedMission?.entite_auditee || activeMission?.client || '';
@@ -199,6 +204,12 @@ export default function HomePage() {
       return { observations: 0, applications: 0, controls: 0 };
     }
 
+    const scopedApplications = new Set(
+      activeDisplayApplications
+        .map((application) => application.trim())
+        .filter((application): application is string => Boolean(application))
+    );
+
     const fallbackApplications = new Set(
       observations
         .map((observation) => observation.application?.trim())
@@ -213,10 +224,10 @@ export default function HomePage() {
 
     return {
       observations: activeMission.observations_count ?? observations.length,
-      applications: activeMission.applications_count ?? fallbackApplications.size,
+      applications: scopedApplications.size || activeMission.applications_count || fallbackApplications.size,
       controls: activeMission.control_ids_count ?? fallbackControls.size
     };
-  }, [activeMission, observations]);
+  }, [activeDisplayApplications, activeMission, observations]);
 
   const progressSteps = useMemo<MissionWorkflowStep[]>(() => {
     if (activeMission?.workflow?.steps?.length) {
@@ -517,25 +528,47 @@ export default function HomePage() {
     }
   };
 
+  const handleGenerateReport = async () => {
+    if (!activeMission || generatingReport) return;
+
+    setGeneratingReport(true);
+    try {
+      await regenerateReportPreview();
+      navigate('/report');
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate report.');
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   return (
     <>
-      <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="pwc-kicker">{text.home.kicker}</p>
-          <h1 className="pwc-title mt-2 text-4xl font-semibold">{text.home.title}</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            {text.home.subtitle}
-          </p>
+      <div className="mission-studio space-y-6">
+      <section className="mission-studio-hero">
+        <div className="mission-studio-brand">
+          <span>{text.home.kicker}</span>
+          <strong>{activeMission?.client || 'Mission workspace'} / {activeMission?.fiscal_year || 'FY setup'}</strong>
         </div>
-        <button
-          onClick={loadMissions}
-          disabled={loadingMissions}
-          className="pwc-action-muted disabled:opacity-50"
-        >
-          <FolderOpen className="h-4 w-4" /> {loadingMissions ? text.home.refreshing : text.home.refresh}
-        </button>
-      </div>
+
+        <div className="mission-studio-command">
+          <div>
+            <h1>{text.home.title}</h1>
+            <p>{text.home.subtitle}</p>
+          </div>
+        </div>
+
+        <div className="mission-studio-hero-footer">
+          <span>Active mission: {activeMission?.name || 'none selected'}</span>
+          <button
+            onClick={loadMissions}
+            disabled={loadingMissions}
+          >
+            <FolderOpen className="h-4 w-4" /> {loadingMissions ? text.home.refreshing : text.home.refresh}
+          </button>
+        </div>
+      </section>
 
       <input
         ref={excelInputRef}
@@ -559,7 +592,7 @@ export default function HomePage() {
             <h2 className="pwc-title mt-3 text-3xl font-semibold">{text.home.missions}</h2>
           </div>
           {canManageMissions ? (
-          <div className="flex flex-wrap gap-3">
+          <div className="mission-toolbar-actions flex flex-wrap gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -568,14 +601,14 @@ export default function HomePage() {
                   setCreateExcelMenuOpen((current) => !current);
                 }}
                 disabled={creatingFromExcel}
-                className="pwc-action-primary disabled:opacity-50"
+                className="mission-toolbar-button mission-toolbar-button-secondary disabled:opacity-50"
               >
                 <FileSpreadsheet className="h-4 w-4" />
                 {creatingFromExcel ? text.home.importing : text.home.createFromExcel}
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="mission-toolbar-chevron h-4 w-4" />
               </button>
               {createExcelMenuOpen && (
-                <div className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="mission-create-menu absolute right-0 z-30 mt-2 w-72 overflow-hidden border bg-white p-1.5">
                   <button
                     type="button"
                     onClick={(event) => {
@@ -583,7 +616,7 @@ export default function HomePage() {
                       setCreateExcelMenuOpen(false);
                       excelInputRef.current?.click();
                     }}
-                    className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left hover:bg-slate-50"
+                    className="mission-create-menu-item flex w-full items-start gap-3 px-3 py-3 text-left"
                   >
                     <FileSpreadsheet className="mt-0.5 h-4 w-4 text-slate-600" />
                     <span>
@@ -598,7 +631,7 @@ export default function HomePage() {
                       setCreateExcelMenuOpen(false);
                       void openM365Picker('create');
                     }}
-                    className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left hover:bg-slate-50"
+                    className="mission-create-menu-item flex w-full items-start gap-3 px-3 py-3 text-left"
                   >
                     <FolderOpen className="mt-0.5 h-4 w-4 text-slate-600" />
                     <span>
@@ -615,7 +648,7 @@ export default function HomePage() {
                 setFormOpen((current) => !current);
                 setFormStep(1);
               }}
-              className="pwc-action-dark"
+              className="mission-toolbar-button mission-toolbar-button-primary"
             >
               <Plus className="h-4 w-4" /> {text.home.newMission}
             </button>
@@ -835,7 +868,7 @@ export default function HomePage() {
           {missions.map((mission) => (
             <div
               key={mission.mission_id}
-              className={`rounded-[1.75rem] border p-5 text-left transition ${
+              className={`mission-studio-mission-card rounded-[1.75rem] border p-5 text-left transition ${
                     activeMissionId === mission.mission_id
                   ? 'border-[#ef5b0c]/25 bg-[#fff3eb] shadow-[0_16px_30px_rgba(239,91,12,0.10)]'
                   : 'border-slate-200 bg-white/88 hover:border-[#ef5b0c]/25 hover:bg-white'
@@ -1148,65 +1181,60 @@ export default function HomePage() {
             </span>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)_40px_minmax(0,1fr)_40px_minmax(0,1fr)_40px_minmax(0,1fr)]">
+          <div className="rounded-[1.5rem] border border-slate-200 bg-white/70 px-5 py-6">
+            <div className="grid gap-4 lg:grid-cols-5">
             {progressSteps.map((step, index) => {
               const isCompleted = step.state === 'completed';
               const isCurrent = step.state === 'in_progress';
               const stepStateLabel = step.status_label;
-              const stepDescription = step.description;
 
               return (
-                <div key={step.key} className="contents">
-                  <div
-                    className={`pwc-workflow-card ${
-                      isCompleted
-                        ? 'pwc-workflow-card-completed'
-                        : isCurrent
-                        ? 'pwc-workflow-card-current'
-                        : 'pwc-workflow-card-upcoming'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-1.5">
+                <div key={step.key} className="relative">
+                  {index < progressSteps.length - 1 && (
+                    <div
+                      className={`absolute left-[1.125rem] top-[1.125rem] hidden h-px w-[calc(100%+1rem)] lg:block ${
+                        isCompleted ? 'bg-slate-300' : 'bg-slate-200'
+                      }`}
+                    />
+                  )}
+
+                  <div className="relative z-[1] flex gap-4 lg:block">
+                    <div className="flex shrink-0 flex-col items-center lg:items-start">
                       <div
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-4 ring-white ${
                           isCompleted
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-[#0f8f61] text-white'
                             : isCurrent
-                            ? 'bg-amber-500 text-white'
+                            ? 'bg-[#ef5b0c] text-white'
                             : 'bg-white text-slate-500 ring-1 ring-slate-200'
                         }`}
                       >
                         {isCompleted ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
                       </div>
+                      {index < progressSteps.length - 1 && (
+                        <div className="mt-2 h-full w-px bg-slate-200 lg:hidden" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 pb-5 lg:mt-4 lg:pb-0">
+                      <p className="text-sm font-semibold leading-5 text-slate-950">{step.label}</p>
                       <span
-                        className={`max-w-[82px] rounded-full px-2 py-1 text-[9px] font-semibold uppercase leading-[1.2] tracking-[0.12em] ${
+                        className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
                           isCompleted
-                            ? 'bg-emerald-100 text-emerald-700'
+                            ? 'bg-emerald-50 text-[#0f8f61] ring-1 ring-emerald-100'
                             : isCurrent
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                            ? 'bg-orange-50 text-[#c74634] ring-1 ring-orange-100'
+                            : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200'
                         }`}
                       >
                         {stepStateLabel}
                       </span>
                     </div>
-
-                    <div className="mt-6">
-                      <p className="text-lg font-semibold leading-7 text-slate-900">{step.label}</p>
-                      <p className="mt-3 text-sm leading-6 text-slate-500">{stepDescription}</p>
-                    </div>
                   </div>
-
-                  {index < progressSteps.length - 1 && (
-                    <div className="hidden xl:flex items-center justify-center">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-                        <ArrowRight className="h-4 w-4 text-slate-400" />
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
+            </div>
           </div>
         </section>
       )}
@@ -1227,10 +1255,10 @@ export default function HomePage() {
           </button>
           <button
             disabled={activeMission.status === 'Draft'}
-            onClick={() => navigate('/report')}
+            onClick={() => void handleGenerateReport()}
             className="pwc-action-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {text.home.generateReport}
+            {generatingReport ? 'Generating...' : text.home.generateReport}
           </button>
         </div>
       )}

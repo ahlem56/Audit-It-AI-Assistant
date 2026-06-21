@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import delete, select, text
@@ -10,11 +12,15 @@ from sqlalchemy import delete, select, text
 from app.config.settings import AZURE_SQL_ENABLED
 from app.db.models import FeedbackRecord, MissionRecord, ObservationRecord, ReportVersionRecord
 from app.db.session import Base, ENGINE, get_db_session
-from app.models.audit_input import StructuredAuditInput
+from app.models.audit_input import AuditObservation, MissionInfo, StructuredAuditInput
 from app.models.report_sections import AuditReportOutput
 
 logger = logging.getLogger(__name__)
 _AZURE_SQL_READY = False
+_AZURE_SQL_INITIALIZING = False
+_LAST_AZURE_SQL_INIT_ATTEMPT = 0.0
+_AZURE_SQL_RETRY_INTERVAL_SECONDS = 20
+_AZURE_SQL_INIT_LOCK = Lock()
 
 
 def _azure_sql_configured() -> bool:
@@ -22,15 +28,33 @@ def _azure_sql_configured() -> bool:
 
 
 def azure_sql_enabled() -> bool:
-    return _azure_sql_configured() and _AZURE_SQL_READY
+    if not _azure_sql_configured():
+        return False
+    if _AZURE_SQL_READY:
+        return True
+    if _AZURE_SQL_INITIALIZING:
+        return False
+
+    now = time.monotonic()
+    if now - _LAST_AZURE_SQL_INIT_ATTEMPT >= _AZURE_SQL_RETRY_INTERVAL_SECONDS:
+        logger.info("Azure SQL is configured but not ready. Retrying initialization.")
+        init_azure_sql_storage()
+    return _AZURE_SQL_READY
 
 
 def init_azure_sql_storage() -> None:
-    global _AZURE_SQL_READY
+    global _AZURE_SQL_INITIALIZING, _AZURE_SQL_READY, _LAST_AZURE_SQL_INIT_ATTEMPT
     if not _azure_sql_configured():
         logger.info("Azure SQL not configured. Using local mission storage.")
         _AZURE_SQL_READY = False
         return
+    if _AZURE_SQL_INITIALIZING:
+        return
+    with _AZURE_SQL_INIT_LOCK:
+        if _AZURE_SQL_INITIALIZING:
+            return
+        _AZURE_SQL_INITIALIZING = True
+        _LAST_AZURE_SQL_INIT_ATTEMPT = time.monotonic()
     try:
         Base.metadata.create_all(bind=ENGINE)
         with ENGINE.connect() as connection:
@@ -47,6 +71,12 @@ def init_azure_sql_storage() -> None:
                 connection.execute(
                     text("ALTER TABLE missions ADD invited_auditor_emails_json NVARCHAR(MAX) NULL")
                 )
+                connection.commit()
+            if "audit_input_json" not in mission_columns:
+                connection.execute(text("ALTER TABLE missions ADD audit_input_json NVARCHAR(MAX) NULL"))
+                connection.commit()
+            if "audit_input_cache_key" not in mission_columns:
+                connection.execute(text("ALTER TABLE missions ADD audit_input_cache_key NVARCHAR(50) NULL"))
                 connection.commit()
             auth_session_columns = {
                 row[0]
@@ -72,6 +102,8 @@ def init_azure_sql_storage() -> None:
     except Exception as exc:
         _AZURE_SQL_READY = False
         logger.exception("Azure SQL initialization failed: %s", exc)
+    finally:
+        _AZURE_SQL_INITIALIZING = False
 
 
 def _mission_to_dict(record: MissionRecord) -> dict[str, Any]:
@@ -97,6 +129,7 @@ def _mission_to_dict(record: MissionRecord) -> dict[str, Any]:
         "exported_at": record.exported_at,
         "owner_user_id": record.owner_user_id or "",
         "owner_email": record.owner_email or "",
+        "audit_input_cache_key": record.audit_input_cache_key or "",
         "invited_auditor_emails": [
             str(email).strip().lower()
             for email in invited_auditor_emails
@@ -149,6 +182,106 @@ def get_mission(
         if record and not _mission_accessible(record, user_id=user_id, user_email=user_email, user_role=user_role):
             return None
         return _mission_to_dict(record) if record else None
+
+
+def load_audit_input(
+    mission_id: str,
+    *,
+    user_id: str | None = None,
+    user_email: str | None = None,
+    user_role: str | None = None,
+) -> StructuredAuditInput | None:
+    if not azure_sql_enabled():
+        return None
+    with get_db_session() as session:
+        mission_record = session.execute(
+            select(MissionRecord).where(MissionRecord.mission_id == mission_id)
+        ).scalar_one_or_none()
+        if mission_record is None:
+            return None
+        if not _mission_accessible(
+            mission_record,
+            user_id=user_id,
+            user_email=user_email,
+            user_role=user_role,
+        ):
+            return None
+
+        if mission_record.audit_input_json:
+            try:
+                return StructuredAuditInput.model_validate(json.loads(mission_record.audit_input_json))
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("Stored audit_input_json for mission %s is invalid; rebuilding from observations.", mission_id)
+
+        observation_records = (
+            session.execute(
+                select(ObservationRecord)
+                .where(ObservationRecord.mission_id == mission_id)
+                .order_by(ObservationRecord.id.asc())
+            )
+            .scalars()
+            .all()
+        )
+        if not observation_records:
+            return None
+
+        applications = sorted(
+            {
+                (record.application or "").strip()
+                for record in observation_records
+                if (record.application or "").strip()
+            }
+        )
+        covered_processes = sorted(
+            {
+                (record.domaine_controle or "").strip()
+                for record in observation_records
+                if (record.domaine_controle or "").strip()
+            }
+        )
+
+        return StructuredAuditInput(
+            mission=MissionInfo(
+                mission_id=mission_record.mission_id,
+                titre_mission=mission_record.name or "",
+                entite_auditee=mission_record.client_name or "",
+                periode=mission_record.fiscal_year or "",
+                processus_couverts=covered_processes,
+                applications=applications,
+            ),
+            observations=[
+                AuditObservation(
+                    observation_id=record.observation_id or "",
+                    domaine_controle=record.domaine_controle or "",
+                    categorie_controle=record.categorie_controle or "",
+                    controle_ref=record.controle_ref or "",
+                    application=record.application or "",
+                    couche=record.couche or "",
+                    controle_attendu=record.controle_attendu or "",
+                    constat=record.constat or "",
+                    risque_associe=record.risque_associe or "",
+                    procedure_compensatoire=record.procedure_compensatoire or "",
+                    impact_potentiel=record.impact_potentiel or "",
+                    cause_racine=record.cause_racine or "",
+                    commentaire_auditeur=record.commentaire_auditeur or "",
+                    population=record.population or "",
+                    taille_echantillon=record.taille_echantillon or "",
+                    nombre_exceptions=record.nombre_exceptions or "",
+                    responsables=record.responsables or "",
+                    references_probantes=record.references_probantes or "",
+                    statut_controle=record.statut_controle or "",
+                    priority=record.priority,
+                    priority_justification=record.priority_justification or "",
+                    priority_reason=record.priority_reason or "",
+                    priority_source=record.priority_source or "",
+                    statut_validation=record.statut_validation or "",
+                    recommandation_proposee=record.recommandation_proposee or "",
+                    titre_observation=record.titre_observation or "",
+                    included_in_report=bool(record.included_in_report),
+                )
+                for record in observation_records
+            ],
+        )
 
 
 def create_mission(payload: dict[str, Any]) -> dict[str, Any]:
@@ -351,3 +484,30 @@ def save_report_version(
                 structured_output_json=json.dumps(structured_output, ensure_ascii=False),
             )
         )
+
+
+def load_latest_report_version(mission_id: str) -> dict[str, Any] | None:
+    if not azure_sql_enabled():
+        return None
+    with get_db_session() as session:
+        record = (
+            session.execute(
+                select(ReportVersionRecord)
+                .where(ReportVersionRecord.mission_id == mission_id)
+                .order_by(ReportVersionRecord.cached_at.desc(), ReportVersionRecord.id.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if record is None:
+            return None
+        try:
+            structured_output = json.loads(record.structured_output_json or "{}")
+        except json.JSONDecodeError:
+            return None
+        return {
+            "agent": "report_agent",
+            "request": f"Generate report for mission {mission_id}",
+            "audit_input_mtime_ns": record.audit_input_mtime_ns,
+            "structured_output": structured_output,
+        }

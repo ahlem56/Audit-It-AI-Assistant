@@ -30,6 +30,7 @@ from app.services.mission_service import (
     get_mission,
     invite_auditor_to_mission,
     load_mission_audit_input,
+    load_mission_report_cache,
     save_mission_report_cache,
     update_mission,
     user_can_manage_mission,
@@ -42,6 +43,7 @@ from app.services.report_email_service import (
     default_report_recipient,
     send_mission_invitation_email,
     send_report_email,
+    send_report_test_email,
 )
 from app.services.security_audit_service import log_security_event
 from app.utils.file_naming import slugify, timestamp
@@ -69,11 +71,11 @@ def _report_cache_path(mission_id: str) -> Path:
     return MISSIONS_DIR / mission_id / "report_cache.json"
 
 
-def _load_cached_report(mission_id: str) -> dict | None:
+def _load_cached_report(mission_id: str, user_id: str | None = None) -> dict | None:
     cache_path = _report_cache_path(mission_id)
     audit_input_path = _audit_input_path(mission_id)
     if not cache_path.exists() or not audit_input_path.exists():
-        return None
+        return load_mission_report_cache(mission_id, user_id=user_id)
 
     try:
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -107,6 +109,9 @@ def _load_cached_report(mission_id: str) -> dict | None:
 def _save_cached_report(mission_id: str, result: dict, user_id: str | None = None) -> dict:
     cache_path = _report_cache_path(mission_id)
     audit_input_path = _audit_input_path(mission_id)
+    if not audit_input_path.exists():
+        return save_mission_report_cache(mission_id, result, user_id=user_id)
+
     cache_payload = {
         "cached_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "audit_input_mtime_ns": audit_input_path.stat().st_mtime_ns,
@@ -129,7 +134,7 @@ def _generate_and_cache_report(mission_id: str, audit_input, user_id: str | None
 
 
 def _load_or_generate_report_result(mission_id: str, audit_input, user_id: str | None = None) -> dict:
-    cached = _load_cached_report(mission_id)
+    cached = _load_cached_report(mission_id, user_id=user_id)
     if cached is not None:
         return cached
     return _generate_and_cache_report(mission_id, audit_input, user_id=user_id)
@@ -258,12 +263,7 @@ async def get_report_preview(mission_id: str, user=Depends(require_authenticated
     if audit_input is None:
         raise HTTPException(status_code=404, detail="Mission audit input not found.")
 
-    cached = await run_in_threadpool(_load_cached_report, mission_id)
-    if cached is not None:
-        return cached
-
-    result = await run_in_threadpool(_generate_and_cache_report, mission_id, audit_input, user["user_id"])
-    return result
+    return await run_in_threadpool(_load_or_generate_report_result, mission_id, audit_input, user["user_id"])
 
 
 @router.post("/missions/{mission_id}/report-preview/regenerate")
@@ -279,7 +279,10 @@ async def get_quality_gate(mission_id: str, user=Depends(require_authenticated_u
     audit_input = await run_in_threadpool(load_mission_audit_input, mission_id, user_id=user["user_id"])
     if audit_input is None:
         raise HTTPException(status_code=404, detail="Mission audit input not found.")
-    return await run_in_threadpool(_compute_quality_gate, mission_id, audit_input, user["user_id"])
+    try:
+        return await run_in_threadpool(_compute_quality_gate, mission_id, audit_input, user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/missions/{mission_id}/export-report")
@@ -294,11 +297,14 @@ async def export_report(
     if audit_input is None or mission is None:
         raise HTTPException(status_code=404, detail="Mission report data not found.")
 
-    result = await run_in_threadpool(_load_cached_report, mission_id)
+    result = await run_in_threadpool(_load_cached_report, mission_id, user["user_id"])
     if result is None:
         result = await run_in_threadpool(_generate_and_cache_report, mission_id, audit_input, user["user_id"])
 
-    file_stream = await run_in_threadpool(build_export_file, result, format)
+    try:
+        file_stream = await run_in_threadpool(build_export_file, result, format)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = _mission_report_filename_for_format(mission, mission_id, format)
     media_type = {
         "pdf": "application/pdf",
@@ -373,12 +379,12 @@ async def send_report_email_endpoint(mission_id: str, payload: SendReportEmailRe
     if audit_input is None or mission is None:
         raise HTTPException(status_code=404, detail="Mission report data not found.")
 
-    result = await run_in_threadpool(_load_cached_report, mission_id)
+    result = await run_in_threadpool(_load_cached_report, mission_id, user["user_id"])
     if result is None:
         result = await run_in_threadpool(_generate_and_cache_report, mission_id, audit_input, user["user_id"])
 
     try:
-        file_stream = await run_in_threadpool(build_export_file, result)
+        file_stream = await run_in_threadpool(build_export_file, result, "pptx")
         attachment_bytes = file_stream.getvalue()
         filename = _mission_report_filename(mission, mission_id)
         await run_in_threadpool(
@@ -399,4 +405,34 @@ async def send_report_email_endpoint(mission_id: str, payload: SendReportEmailRe
         sent_to=payload.to_email,
         subject=payload.subject,
         filename=filename,
+    )
+
+
+@router.post("/missions/{mission_id}/send-report-email-test", response_model=SendReportEmailResponse)
+async def send_report_email_test_endpoint(
+    mission_id: str,
+    payload: SendReportEmailRequest,
+    user=Depends(require_authenticated_user),
+):
+    mission = await run_in_threadpool(get_mission, mission_id, user_id=user["user_id"])
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+
+    try:
+        await run_in_threadpool(
+            send_report_test_email,
+            to_email=payload.to_email,
+            subject=payload.subject,
+            body=payload.body,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send test email: {exc}") from exc
+
+    return SendReportEmailResponse(
+        mission_id=mission_id,
+        sent_to=payload.to_email,
+        subject=payload.subject,
+        filename="",
     )

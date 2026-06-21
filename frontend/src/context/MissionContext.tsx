@@ -19,6 +19,7 @@ import {
   exportMissionReportDocx,
   getMissionReportEmailDefaults,
   sendMissionReportEmail,
+  sendMissionReportTestEmail,
   sendMissionAssistantMessage,
   getMissionFeedbacks,
   createMissionFeedback,
@@ -93,6 +94,7 @@ interface MissionContextValue {
   exportReportDocx: () => Promise<Blob>;
   getReportEmailDefaults: () => Promise<ReportEmailDefaults>;
   sendReportEmail: (payload: SendReportEmailPayload) => Promise<SendReportEmailResult>;
+  sendReportTestEmail: (payload: SendReportEmailPayload) => Promise<SendReportEmailResult>;
   sendAssistantMessage: (payload: AssistantMessagePayload) => Promise<void>;
   loadFeedback: () => Promise<void>;
   submitFeedback: (payload: CreateFeedbackPayload) => Promise<AuditorFeedback | null>;
@@ -367,6 +369,11 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     return await sendMissionReportEmail(activeMissionId, payload);
   };
 
+  const sendReportTestEmail = async (payload: SendReportEmailPayload): Promise<SendReportEmailResult> => {
+    if (!activeMissionId) throw new Error('No active mission');
+    return await sendMissionReportTestEmail(activeMissionId, payload);
+  };
+
   const sendAssistantMessage = async (payload: AssistantMessagePayload) => {
     if (!activeMissionId) return;
     const userMessage: ChatMessage = {
@@ -432,8 +439,6 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     if (activeMissionId) {
       loadActiveMission(activeMissionId);
       loadObservations();
-      loadReportPreview();
-      loadQualityGate();
       loadFeedback();
     }
   }, [activeMissionId]);
@@ -481,6 +486,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     exportReportDocx,
     getReportEmailDefaults,
     sendReportEmail,
+    sendReportTestEmail,
     sendAssistantMessage,
     loadFeedback,
     submitFeedback,

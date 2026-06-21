@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from app.models.audit_input import AuditObservation, MissionInfo, StructuredAuditInput
 from app.services import mission_service
 from app.services.retrieval_service import retrieve_documents
 
@@ -82,6 +83,56 @@ class MissionIsolationTests(unittest.TestCase):
 
     def test_unscoped_retrieval_is_blocked_by_default(self) -> None:
         self.assertEqual(retrieve_documents("show all indexed audit evidence"), [])
+
+    def test_application_count_prefers_mission_scope(self) -> None:
+        audit_input = StructuredAuditInput(
+            mission=MissionInfo(
+                applications=[
+                    "Temenos T24",
+                    "Amplitude (Sopra)",
+                    "SWIFT Alliance",
+                    "IBS OpenBanking",
+                    "HR Access",
+                ]
+            ),
+            observations=[
+                AuditObservation(application="Temenos T24", controle_ref="AC-01"),
+                AuditObservation(application="HR Access", controle_ref="AC-02"),
+                AuditObservation(application="Temenos T24 / Oracle 19c", controle_ref="AC-03"),
+                AuditObservation(application="SWIFT Alliance", controle_ref="AC-04"),
+                AuditObservation(application="Amplitude (Sopra)", controle_ref="AC-05"),
+                AuditObservation(application="IBS OpenBanking", controle_ref="AC-06"),
+                AuditObservation(application="Temenos T24 / Red Hat Linux 8", controle_ref="AC-07"),
+            ],
+        )
+
+        stats = mission_service._audit_stats(audit_input)
+
+        self.assertEqual(stats["applications_count"], 5)
+
+    def test_parsed_source_data_completes_workbook_step_without_filename_metadata(self) -> None:
+        self._create_owned_mission()
+        audit_input = StructuredAuditInput(
+            mission=MissionInfo(mission_id="secure_mission", entite_auditee="Client A"),
+            observations=[
+                AuditObservation(
+                    observation_id="OBS-001",
+                    controle_ref="AC-01",
+                    application="ERP",
+                    statut_validation="validated",
+                )
+            ],
+        )
+
+        mission_service.save_mission_audit_input(
+            "secure_mission",
+            audit_input,
+            user_id=OWNER_MANAGER["user_id"],
+        )
+        mission = mission_service.get_mission("secure_mission", user=OWNER_MANAGER)
+
+        workbook_step = next(step for step in mission["workflow"]["steps"] if step["key"] == "workbook_uploaded")
+        self.assertEqual(workbook_step["state"], "completed")
 
 
 if __name__ == "__main__":

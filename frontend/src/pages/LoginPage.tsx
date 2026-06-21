@@ -47,7 +47,7 @@ export default function LoginPage() {
                 {text.login.internalAccess}
               </span>
 
-              <h1 className="max-w-[9.5ch] font-['Georgia'] text-4xl leading-[0.98] tracking-[-0.03em] text-slate-950 sm:text-5xl lg:text-[4.6rem]">
+              <h1 className="max-w-[10.5ch] font-sans text-4xl font-bold leading-[1.04] tracking-normal text-slate-950 sm:text-5xl lg:text-[4.2rem]">
                 {text.login.titleLine1}
                 <br />
                 {text.login.titleLine2}

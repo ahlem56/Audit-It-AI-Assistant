@@ -404,6 +404,31 @@ function handleApiError(error: any): Error {
   return new Error(error.message || 'Unexpected API error.');
 }
 
+async function handleBlobApiError(error: any): Promise<Error> {
+  const response = error?.response;
+  const data = response?.data;
+
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) {
+            return new Error(String(parsed.detail));
+          }
+        } catch {
+          return new Error(text);
+        }
+      }
+    } catch {
+      // Fall back to the default axios error parser below.
+    }
+  }
+
+  return handleApiError(error);
+}
+
 function normalizePriority(priority?: string | null): PriorityLevel {
   const normalized = String(priority ?? '').trim().toLowerCase();
   if (normalized === 'critical') return 'Critical';
@@ -1365,7 +1390,7 @@ export async function exportMissionReportPptx(missionId: string): Promise<Blob> 
     });
     return response.data;
   } catch (error) {
-    throw handleApiError(error);
+    throw await handleBlobApiError(error);
   }
 }
 
@@ -1377,7 +1402,7 @@ export async function exportMissionReportPdf(missionId: string): Promise<Blob> {
     });
     return response.data;
   } catch (error) {
-    throw handleApiError(error);
+    throw await handleBlobApiError(error);
   }
 }
 
@@ -1389,7 +1414,7 @@ export async function exportMissionReportDocx(missionId: string): Promise<Blob> 
     });
     return response.data;
   } catch (error) {
-    throw handleApiError(error);
+    throw await handleBlobApiError(error);
   }
 }
 
@@ -1412,6 +1437,18 @@ export async function sendMissionReportEmail(
 ): Promise<SendReportEmailResult> {
   try {
     const response = await api.post<SendReportEmailResult>(`/missions/${missionId}/send-report-email`, payload);
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error);
+  }
+}
+
+export async function sendMissionReportTestEmail(
+  missionId: string,
+  payload: SendReportEmailPayload
+): Promise<SendReportEmailResult> {
+  try {
+    const response = await api.post<SendReportEmailResult>(`/missions/${missionId}/send-report-email-test`, payload);
     return response.data;
   } catch (error) {
     throw handleApiError(error);

@@ -37,6 +37,7 @@ from app.config.settings import (
     AZURE_STORAGE_CONNECTION_STRING,
     AZURE_STORAGE_CONTAINER_PROFILE_IMAGES,
     GRAPH_DELEGATED_SCOPES,
+    GRAPH_BASE_URL,
 )
 from app.db.models import AppUserRecord, AuthSessionRecord, AuthStateRecord
 from app.db.session import get_db_session
@@ -306,6 +307,39 @@ def get_my_profile_image(user_id: str) -> tuple[bytes, str]:
     if not absolute_path.exists():
         raise ValueError("No profile image found for this user.")
     return absolute_path.read_bytes(), content_type
+
+
+def _try_import_graph_profile_image(user_id: str, access_token: str | None) -> bool:
+    access_token = str(access_token or "").strip()
+    if not access_token:
+        return False
+
+    existing = _ensure_user_row(user_id)
+    existing_data = _record_to_dict(existing) or {}
+    if str(existing_data.get("profile_image_path") or "").strip():
+        return False
+
+    request = urllib.request.Request(
+        f"{GRAPH_BASE_URL}/me/photo/$value",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            content = response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in {401, 403, 404}:
+            logger.warning("Could not import Microsoft profile photo: Graph returned HTTP %s.", exc.code)
+        return False
+    except urllib.error.URLError as exc:
+        logger.warning("Could not import Microsoft profile photo: %s", exc.reason)
+        return False
+
+    try:
+        save_my_profile_image(user_id, content=content, original_filename="microsoft-profile-photo")
+    except ValueError as exc:
+        logger.warning("Could not save Microsoft profile photo: %s", exc)
+        return False
+    return True
 
 
 def _fetch_json(url: str, *, data: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -797,6 +831,8 @@ def complete_entra_login(*, code: str, state_token: str, user_agent: str = "") -
         raise AuthenticationError("The Entra ID token is expired.")
 
     user = _upsert_app_user(claims)
+    if _try_import_graph_profile_image(user["user_id"], token_response.get("access_token")):
+        user = get_user_by_id(user["user_id"]) or user
     session_token = _create_session(user["user_id"], user_agent=user_agent, token_response=token_response)
     return user, session_token, state_row["next_path"]
 
