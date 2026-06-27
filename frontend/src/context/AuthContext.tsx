@@ -17,8 +17,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function resolveAuthTarget(path: string) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (apiBaseUrl && /^https?:\/\//i.test(apiBaseUrl)) {
+    const backendPath = path.startsWith('/api/') ? path.slice(4) : path;
+    return `${apiBaseUrl}${backendPath.startsWith('/') ? '' : '/'}${backendPath}`;
+  }
+
+  return path;
+}
+
 function buildRedirectUrl(path: string, nextPath?: string) {
-  const url = new URL(path, window.location.origin);
+  const url = new URL(resolveAuthTarget(path), window.location.origin);
   if (nextPath) {
     url.searchParams.set('next', nextPath);
   }
