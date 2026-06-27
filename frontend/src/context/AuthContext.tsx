@@ -53,12 +53,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshSession();
   }, []);
 
-  const login = (nextPath = '/') => {
+  const login = (nextPath = '/dashboard') => {
     const target = config?.login_url || '/api/auth/entra/login';
     window.location.assign(buildRedirectUrl(target, nextPath));
   };
 
-  const signup = (nextPath = '/') => {
+  const signup = (nextPath = '/dashboard') => {
     const target = config?.signup_url || '/api/auth/entra/login?prompt=create';
     window.location.assign(buildRedirectUrl(target, nextPath));
   };

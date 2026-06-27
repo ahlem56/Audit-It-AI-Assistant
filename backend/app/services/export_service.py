@@ -5,6 +5,7 @@ import tempfile
 import time
 import textwrap
 import logging
+import contextvars
 from io import BytesIO
 from pathlib import Path
 from typing import Iterable, Optional, NamedTuple
@@ -22,6 +23,15 @@ PP_LAYOUT_BLANK = 12
 MSO_SHAPE_RECTANGLE = 1
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "data" / "Template PWC Universal v2.pptx"
 logger = logging.getLogger(__name__)
+_REPORT_EXPORT_ID: contextvars.ContextVar[str] = contextvars.ContextVar("report_export_id", default="-")
+
+
+def set_report_export_id(export_id: str | None) -> None:
+    _REPORT_EXPORT_ID.set(export_id or "-")
+
+
+def _report_export_id() -> str:
+    return _REPORT_EXPORT_ID.get()
 
 SLIDE_WIDTH = 13.333 * 72
 SLIDE_HEIGHT = 7.5 * 72
@@ -781,34 +791,29 @@ def _add_section_divider_slide(presentation, title: str, section_number: int, fo
 def _add_priority_methodology_slide(presentation, footer_label: str) -> None:
     columns = [
         _TableColumn("Priorité", 1.20 * 72, 14, 2),
-        _TableColumn("Description", 4.45 * 72, 58, 4),
-        _TableColumn("Risque", 3.60 * 72, 48, 4),
-        _TableColumn("Délai cible", 1.45 * 72, 16, 2),
+        _TableColumn("Description", 5.25 * 72, 68, 4),
+        _TableColumn("Risque", 4.25 * 72, 56, 4),
     ]
     rows = [
         (
             "Critique",
             "Faiblesse significative pouvant affecter une application ou un processus clé, avec exposition avérée ou forte probabilité d'exploitation.",
             "Impact potentiel élevé sur la confidentialité, l'intégrité, la disponibilité, la traçabilité ou la fiabilité des traitements.",
-            "30 jours",
         ),
         (
             "Élevée",
             "Déficience importante nécessitant une remédiation priorisée et un suivi formel par le management.",
             "Risque notable de contournement de contrôle, d'erreur non détectée, de non-conformité ou d'interruption opérationnelle.",
-            "60 jours",
         ),
         (
             "Moyenne",
             "Amélioration attendue sur un contrôle existant, sans exposition critique immédiate identifiée.",
             "Risque modéré pouvant réduire l'efficacité du dispositif de contrôle interne.",
-            "90 jours",
         ),
         (
             "Faible",
             "Point d'amélioration ou formalisation complémentaire sans incidence significative à court terme.",
             "Risque limité, principalement lié à la documentation, à l'harmonisation ou à l'efficience du contrôle.",
-            "À planifier",
         ),
     ]
     _add_table_slides_v3(
@@ -2708,7 +2713,8 @@ def _add_closing_slide(presentation, data, footer_label: str) -> None:
 
 def _prepare_presentation(powerpoint, data):
     started = time.perf_counter()
-    logger.info("Opening PowerPoint template: %s", TEMPLATE_PATH)
+    export_id = _report_export_id()
+    logger.info("Report export timing [%s] PowerPoint opening template path=%s", export_id, TEMPLATE_PATH)
     presentation = powerpoint.Presentations.Open(str(TEMPLATE_PATH), WithWindow=False)
     _sanitize_master_palette(presentation)
     try:
@@ -2724,7 +2730,7 @@ def _prepare_presentation(powerpoint, data):
     if slide_count < 1:
         logger.warning("PowerPoint template opened with no accessible slides; creating fallback cover slide.")
         presentation.Slides.Add(1, PP_LAYOUT_BLANK)
-    logger.info("PowerPoint template ready with %s slide(s) in %.1fs", slide_count, time.perf_counter() - started)
+    logger.info("Report export timing [%s] PowerPoint template ready in %.2fs slides=%s", export_id, time.perf_counter() - started, slide_count)
 
     cover_placeholders = {
         "{{REPORT_DATE}}": _build_cover_date_label(data),
@@ -2751,6 +2757,8 @@ def _run_export_step(label: str, operation) -> None:
 
 
 def _generate_report_file(result: ExportReportRequest, *, output_format: str) -> BytesIO:
+    export_id = _report_export_id()
+    total_started = time.perf_counter()
     data = result.structured_output
     if not TEMPLATE_PATH.exists():
         raise FileNotFoundError(f"PowerPoint template not found: {TEMPLATE_PATH}")
@@ -2763,17 +2771,20 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
     temp_suffix = ".pptx" if normalized_format == "pptx" else ".pdf"
 
     footer_label = _build_footer_label(data)
+    init_started = time.perf_counter()
     pythoncom.CoInitialize()
     powerpoint = win32com.client.DispatchEx("PowerPoint.Application")
     powerpoint.Visible = 1
+    logger.info("Report export timing [%s] PowerPoint COM initialized in %.2fs format=%s", export_id, time.perf_counter() - init_started, normalized_format)
     presentation = None
     temp_path: Optional[Path] = None
 
     try:
         render_started = time.perf_counter()
         presentation = _prepare_presentation(powerpoint, data)
-        logger.info("PowerPoint report rendering started")
+        logger.info("Report export timing [%s] PowerPoint report rendering started", export_id)
 
+        section_started = time.perf_counter()
         _add_toc_slide_v3(presentation, _build_export_toc(data), footer_label)
         _add_section_divider_slide(
             presentation,
@@ -2788,15 +2799,23 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
         _add_intervenants_slide_v3(presentation, data, footer_label)
         _add_text_slide_v3(presentation, "Approche d'audit", [f"- {item}" for item in data.audit_approach], footer_label)
         _add_priority_methodology_slide(presentation, footer_label)
+        logger.info("Report export timing [%s] PowerPoint context slides rendered in %.2fs", export_id, time.perf_counter() - section_started)
 
         page_w, _ = _page_size(presentation)
         table_width = page_w - 2 * MARGIN_X
 
+        section_started = time.perf_counter()
         _add_control_matrix_slides(presentation, data, footer_label)
         _add_synthese_slide_v3(presentation, data, footer_label)
         _add_priorities_slide_v3(presentation, data, footer_label)
-        logger.info("PowerPoint synthesis slides rendered in %.1fs", time.perf_counter() - render_started)
+        logger.info(
+            "Report export timing [%s] PowerPoint synthesis slides rendered in %.2fs total_render=%.2fs",
+            export_id,
+            time.perf_counter() - section_started,
+            time.perf_counter() - render_started,
+        )
 
+        section_started = time.perf_counter()
         _add_section_divider_slide(
             presentation,
             "Recommandations détaillées",
@@ -2806,8 +2825,15 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
         )
         for finding in data.detailed_findings:
             _add_finding_slides(presentation, finding, footer_label)
-        logger.info("PowerPoint detailed finding slides rendered in %.1fs", time.perf_counter() - render_started)
+        logger.info(
+            "Report export timing [%s] PowerPoint detailed finding slides rendered in %.2fs findings=%s total_render=%.2fs",
+            export_id,
+            time.perf_counter() - section_started,
+            len(data.detailed_findings),
+            time.perf_counter() - render_started,
+        )
 
+        section_started = time.perf_counter()
         _add_table_slides_v3(
             presentation,
             "Plan d'action consolidé",
@@ -2821,7 +2847,9 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
             _build_recommendation_rows(data),
             footer_label,
         )
+        logger.info("Report export timing [%s] PowerPoint action plan slides rendered in %.2fs", export_id, time.perf_counter() - section_started)
 
+        section_started = time.perf_counter()
         _add_section_divider_slide(
             presentation,
             "Annexes",
@@ -2841,20 +2869,23 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
             footer_label,
         )
         _add_closing_slide(presentation, data, footer_label)
-        logger.info("PowerPoint all slides rendered (%s slides) in %.1fs", presentation.Slides.Count, time.perf_counter() - render_started)
+        logger.info("Report export timing [%s] PowerPoint appendix slides rendered in %.2fs", export_id, time.perf_counter() - section_started)
+        logger.info("Report export timing [%s] PowerPoint all slides rendered in %.2fs slides=%s", export_id, time.perf_counter() - render_started, presentation.Slides.Count)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=temp_suffix) as temp_file:
             temp_path = Path(temp_file.name)
 
-        logger.info("Saving PowerPoint report as %s to %s", normalized_format, temp_path)
+        logger.info("Report export timing [%s] PowerPoint saving file started format=%s temp_path=%s", export_id, normalized_format, temp_path)
         save_started = time.perf_counter()
         presentation.SaveAs(str(temp_path), save_as_type)
-        logger.info("PowerPoint SaveAs completed in %.1fs", time.perf_counter() - save_started)
+        logger.info("Report export timing [%s] PowerPoint SaveAs completed in %.2fs", export_id, time.perf_counter() - save_started)
         presentation.Close()
         presentation = None
         time.sleep(1)
 
+        read_started = time.perf_counter()
         payload = temp_path.read_bytes()
+        logger.info("Report export timing [%s] PowerPoint temp file read in %.2fs bytes=%s", export_id, time.perf_counter() - read_started, len(payload))
         try:
             temp_path.unlink()
         except PermissionError:
@@ -2862,6 +2893,7 @@ def _generate_report_file(result: ExportReportRequest, *, output_format: str) ->
 
         output = BytesIO(payload)
         output.seek(0)
+        logger.info("Report export timing [%s] PowerPoint export completed in %.2fs format=%s bytes=%s", export_id, time.perf_counter() - total_started, normalized_format, len(payload))
         return output
     finally:
         if presentation is not None:

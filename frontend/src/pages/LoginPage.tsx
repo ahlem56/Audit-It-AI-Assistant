@@ -10,11 +10,11 @@ export default function LoginPage() {
   const { authenticated, authEnabled, config, login, loading } = useAuthContext();
   const { text } = useLanguage();
 
-  const nextPath = searchParams.get('next') || '/';
+  const nextPath = searchParams.get('next') || '/dashboard';
   const error = searchParams.get('error_description') || searchParams.get('error');
 
   if (!loading && (!authEnabled || authenticated)) {
-    return <Navigate to={nextPath === '/login' ? '/' : nextPath} replace state={{ from: location }} />;
+    return <Navigate to={nextPath === '/login' ? '/dashboard' : nextPath} replace state={{ from: location }} />;
   }
 
   const trustPoints = [

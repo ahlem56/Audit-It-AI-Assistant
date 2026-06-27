@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -32,6 +32,7 @@ import { getMissionFeedbacks, getMissionObservations, getMissionQualityGate } fr
 import { useAuthContext } from '../context/AuthContext';
 import { useMissionContext } from '../context/MissionContext';
 import type { AuditorFeedback, Mission, MissionQualityGateResult, Observation, PriorityLevel } from '../types';
+import logo from '../assets/pwc-logo.png';
 
 type MissionDashboardData = {
   mission: Mission;
@@ -55,6 +56,21 @@ type ActionCenterItem = {
   severity: 'critical' | 'warning' | 'info' | 'success';
 };
 
+type ReadinessItem = {
+  label: string;
+  detail: string;
+  complete: boolean;
+};
+
+type RiskHeatmapRow = {
+  area: string;
+  Critical: number;
+  High: number;
+  Medium: number;
+  Low: number;
+  total: number;
+};
+
 const priorityColors: Record<PriorityLevel, string> = {
   Critical: '#c74634',
   High: '#ef5b0c',
@@ -71,6 +87,8 @@ const feedbackCategoryLabels: Record<string, string> = {
   missing_content: 'Missing content',
   usability: 'Usability'
 };
+
+const ALL_MISSIONS = 'all';
 
 function percent(value: number, total: number) {
   if (total <= 0) return 0;
@@ -99,6 +117,16 @@ function hasReportGenerated(mission: Mission) {
 
 function hasReportExported(mission: Mission) {
   return Boolean(mission.exported_at);
+}
+
+function missionLabel(mission: Mission) {
+  const parts = [mission.name, mission.client, mission.fiscal_year].filter(Boolean);
+  return parts.length ? parts.join(' - ') : mission.mission_id;
+}
+
+function compactMissionLabel(mission: Mission) {
+  const primary = mission.client || mission.name || mission.mission_id;
+  return mission.fiscal_year ? `${primary} - ${mission.fiscal_year}` : primary;
 }
 
 function average(values: number[]) {
@@ -181,12 +209,38 @@ function actionSeverityClass(severity: ActionCenterItem['severity']) {
   return 'border-slate-200 bg-white/80 text-slate-700';
 }
 
+function healthTone(score: number) {
+  if (score >= 85) return 'text-emerald-700 bg-emerald-50 ring-emerald-100';
+  if (score >= 65) return 'text-amber-700 bg-amber-50 ring-amber-100';
+  return 'text-red-700 bg-red-50 ring-red-100';
+}
+
+function heatmapCellClass(value: number, maxValue: number, priority: PriorityLevel) {
+  if (value === 0) return 'bg-slate-50 text-slate-300';
+  const intensity = maxValue > 0 ? value / maxValue : 0;
+  const opacity = intensity > 0.66 ? 'text-white' : 'text-slate-900';
+  const color =
+    priority === 'Critical'
+      ? 'bg-red-600'
+      : priority === 'High'
+      ? 'bg-orange-500'
+      : priority === 'Medium'
+      ? 'bg-amber-300'
+      : 'bg-stone-200';
+  return `${color} ${opacity}`;
+}
+
 export default function DashboardPage() {
   const { user } = useAuthContext();
   const { activeMission, missions, loadMissions } = useMissionContext();
   const [dashboardData, setDashboardData] = useState<MissionDashboardData[]>([]);
+  const [selectedMissionId, setSelectedMissionId] = useState(ALL_MISSIONS);
+  const [filterTransitionKey, setFilterTransitionKey] = useState(0);
+  const [filterTransitionActive, setFilterTransitionActive] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const filterFrameRef = useRef<number | null>(null);
+  const filterTimerRef = useRef<number | null>(null);
 
   const loadDashboardData = async () => {
     setLoadingDashboard(true);
@@ -230,24 +284,77 @@ export default function DashboardPage() {
     void loadDashboardData();
   }, [missions]);
 
+  useEffect(() => {
+    return () => {
+      if (filterFrameRef.current) window.cancelAnimationFrame(filterFrameRef.current);
+      if (filterTimerRef.current) window.clearTimeout(filterTimerRef.current);
+    };
+  }, []);
+
+  const triggerFilterTransition = () => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    if (filterFrameRef.current) window.cancelAnimationFrame(filterFrameRef.current);
+    if (filterTimerRef.current) window.clearTimeout(filterTimerRef.current);
+
+    setFilterTransitionKey((current) => current + 1);
+    setFilterTransitionActive(false);
+    filterFrameRef.current = window.requestAnimationFrame(() => setFilterTransitionActive(true));
+    filterTimerRef.current = window.setTimeout(() => setFilterTransitionActive(false), 820);
+  };
+
+  const handleMissionFilterChange = (missionId: string) => {
+    if (missionId === selectedMissionId) return;
+    triggerFilterTransition();
+    setSelectedMissionId(missionId);
+  };
+
+  useEffect(() => {
+    if (
+      selectedMissionId !== ALL_MISSIONS &&
+      dashboardData.length > 0 &&
+      !dashboardData.some((entry) => entry.mission.mission_id === selectedMissionId)
+    ) {
+      setSelectedMissionId(ALL_MISSIONS);
+    }
+  }, [dashboardData, selectedMissionId]);
+
+  const filteredDashboardData = useMemo(
+    () =>
+      selectedMissionId === ALL_MISSIONS
+        ? dashboardData
+        : dashboardData.filter((entry) => entry.mission.mission_id === selectedMissionId),
+    [dashboardData, selectedMissionId]
+  );
+
+  const selectedMission = useMemo(
+    () => dashboardData.find((entry) => entry.mission.mission_id === selectedMissionId)?.mission ?? null,
+    [dashboardData, selectedMissionId]
+  );
+
+  const dashboardScopeLabel = selectedMission ? missionLabel(selectedMission) : 'All missions';
+  const dashboardScopeText = selectedMission
+    ? 'Dashboard scoped to the selected mission.'
+    : 'Dashboard scoped to every visible mission.';
+
   const allObservations = useMemo(
-    () => dashboardData.flatMap((entry) => entry.observations),
-    [dashboardData]
+    () => filteredDashboardData.flatMap((entry) => entry.observations),
+    [filteredDashboardData]
   );
 
   const allFeedbacks = useMemo(
-    () => dashboardData.flatMap((entry) => entry.feedbacks),
-    [dashboardData]
+    () => filteredDashboardData.flatMap((entry) => entry.feedbacks),
+    [filteredDashboardData]
   );
 
   const activeMissions = useMemo(
-    () => dashboardData.filter((entry) => entry.mission.status !== 'Finalized').length,
-    [dashboardData]
+    () => filteredDashboardData.filter((entry) => entry.mission.status !== 'Finalized').length,
+    [filteredDashboardData]
   );
 
   const finalizedMissions = useMemo(
-    () => dashboardData.filter((entry) => entry.mission.status === 'Finalized').length,
-    [dashboardData]
+    () => filteredDashboardData.filter((entry) => entry.mission.status === 'Finalized').length,
+    [filteredDashboardData]
   );
 
   const criticalHighCount = useMemo(
@@ -262,19 +369,19 @@ export default function DashboardPage() {
 
   const qualityScores = useMemo(
     () =>
-      dashboardData
+      filteredDashboardData
         .map((entry) => entry.qualityGate?.readiness_score)
         .filter((value): value is number => typeof value === 'number'),
-    [dashboardData]
+    [filteredDashboardData]
   );
 
   const reportsBlocked = useMemo(
-    () => dashboardData.filter((entry) => entry.qualityGate && !entry.qualityGate.export_allowed).length,
-    [dashboardData]
+    () => filteredDashboardData.filter((entry) => entry.qualityGate && !entry.qualityGate.export_allowed).length,
+    [filteredDashboardData]
   );
 
   const workflowSteps: WorkflowStep[] = useMemo(() => {
-    const total = dashboardData.length;
+    const total = filteredDashboardData.length;
     const allValidated = (entry: MissionDashboardData) =>
       entry.observations.length > 0 && entry.observations.every(isObservationValidated);
 
@@ -289,47 +396,47 @@ export default function DashboardPage() {
       {
         key: 'excel',
         label: 'Excel uploaded',
-        count: dashboardData.filter((entry) => hasExcelUploaded(entry.mission)).length,
+        count: filteredDashboardData.filter((entry) => hasExcelUploaded(entry.mission)).length,
         total,
         icon: FileSpreadsheet
       },
       {
         key: 'parsed',
         label: 'Observations parsed',
-        count: dashboardData.filter((entry) => hasObservationsParsed(entry.mission, entry.observations)).length,
+        count: filteredDashboardData.filter((entry) => hasObservationsParsed(entry.mission, entry.observations)).length,
         total,
         icon: ListChecks
       },
       {
         key: 'validated',
         label: 'Observations validated',
-        count: dashboardData.filter(allValidated).length,
+        count: filteredDashboardData.filter(allValidated).length,
         total,
         icon: FileCheck2
       },
       {
         key: 'generated',
         label: 'Report generated',
-        count: dashboardData.filter((entry) => hasReportGenerated(entry.mission)).length,
+        count: filteredDashboardData.filter((entry) => hasReportGenerated(entry.mission)).length,
         total,
         icon: Target
       },
       {
         key: 'quality',
         label: 'Quality gate passed',
-        count: dashboardData.filter((entry) => entry.qualityGate?.export_allowed).length,
+        count: filteredDashboardData.filter((entry) => entry.qualityGate?.export_allowed).length,
         total,
         icon: ShieldAlert
       },
       {
         key: 'exported',
         label: 'Report exported',
-        count: dashboardData.filter((entry) => hasReportExported(entry.mission)).length,
+        count: filteredDashboardData.filter((entry) => hasReportExported(entry.mission)).length,
         total,
         icon: Flag
       }
     ];
-  }, [dashboardData]);
+  }, [filteredDashboardData]);
 
   const priorityData = useMemo(() => {
     const totals: Record<PriorityLevel, number> = {
@@ -418,12 +525,114 @@ export default function DashboardPage() {
 
   const pendingFeedbackCount = allFeedbacks.filter((feedback) => feedback.status === 'pending').length;
   const actionFeedbackCount = allFeedbacks.filter((feedback) => feedback.requires_action).length;
+  const generatedReports = filteredDashboardData.filter((entry) => hasReportGenerated(entry.mission)).length;
+  const exportedReports = filteredDashboardData.filter((entry) => hasReportExported(entry.mission)).length;
+  const qualityGatePassed = filteredDashboardData.filter((entry) => entry.qualityGate?.export_allowed).length;
+  const parsedMissions = filteredDashboardData.filter((entry) => hasObservationsParsed(entry.mission, entry.observations)).length;
   const roleLabel = user?.role === 'manager' ? 'Manager portfolio' : 'Auditor workspace';
-  const visibleMissionCount = dashboardData.length;
+  const visibleMissionCount = filteredDashboardData.length;
+
+  const validationRate = percent(validatedCount, allObservations.length);
+  const averageQualityScore = average(qualityScores);
+  const reportGenerationRate = percent(generatedReports, visibleMissionCount);
+  const exportRate = percent(exportedReports, visibleMissionCount);
+  const feedbackClosureRate = allFeedbacks.length
+    ? percent(allFeedbacks.filter((feedback) => feedback.status !== 'pending' && !feedback.requires_action).length, allFeedbacks.length)
+    : 100;
+  const riskControlScore = allObservations.length
+    ? Math.max(0, 100 - percent(criticalHighCount, allObservations.length))
+    : 0;
+  const missionHealthScore = Math.round(
+    validationRate * 0.3 +
+      averageQualityScore * 0.25 +
+      reportGenerationRate * 0.15 +
+      exportRate * 0.1 +
+      feedbackClosureRate * 0.1 +
+      riskControlScore * 0.1
+  );
+
+  const readinessItems: ReadinessItem[] = [
+    {
+      label: 'Workbook parsed',
+      detail: `${parsedMissions}/${visibleMissionCount || 0} mission${visibleMissionCount === 1 ? '' : 's'}`,
+      complete: visibleMissionCount > 0 && parsedMissions === visibleMissionCount
+    },
+    {
+      label: 'Observations validated',
+      detail: `${validatedCount}/${allObservations.length || 0} observations`,
+      complete: allObservations.length > 0 && validatedCount === allObservations.length
+    },
+    {
+      label: 'Report generated',
+      detail: `${generatedReports}/${visibleMissionCount || 0} mission${visibleMissionCount === 1 ? '' : 's'}`,
+      complete: visibleMissionCount > 0 && generatedReports === visibleMissionCount
+    },
+    {
+      label: 'Quality Gate passed',
+      detail: `${qualityGatePassed}/${visibleMissionCount || 0} mission${visibleMissionCount === 1 ? '' : 's'}`,
+      complete: visibleMissionCount > 0 && qualityGatePassed === visibleMissionCount
+    },
+    {
+      label: 'Report exported',
+      detail: `${exportedReports}/${visibleMissionCount || 0} mission${visibleMissionCount === 1 ? '' : 's'}`,
+      complete: visibleMissionCount > 0 && exportedReports === visibleMissionCount
+    }
+  ];
+
+  const riskHeatmapRows = useMemo<RiskHeatmapRow[]>(() => {
+    const rows = new Map<string, RiskHeatmapRow>();
+
+    allObservations.forEach((observation) => {
+      const area =
+        observation.domaine_controle ||
+        observation.domain ||
+        observation.categorie_controle ||
+        observation.category ||
+        'Unclassified';
+      const priority = observation.priority || 'Low';
+      const row = rows.get(area) || { area, Critical: 0, High: 0, Medium: 0, Low: 0, total: 0 };
+
+      row[priority] += 1;
+      row.total += 1;
+      rows.set(area, row);
+    });
+
+    return Array.from(rows.values())
+      .sort((left, right) => right.Critical - left.Critical || right.High - left.High || right.total - left.total)
+      .slice(0, 5);
+  }, [allObservations]);
+
+  const maxHeatmapValue = Math.max(
+    1,
+    ...riskHeatmapRows.flatMap((row) => [row.Critical, row.High, row.Medium, row.Low])
+  );
+
+  const topRiskArea = riskHeatmapRows[0]?.area || 'No risk area yet';
+  const qualityIssueSummary = useMemo(() => {
+    const counts = new Map<string, { title: string; count: number; severity: 'blocking' | 'warning' }>();
+
+    filteredDashboardData.forEach((entry) => {
+      entry.qualityGate?.issues?.forEach((issue) => {
+        const key = issue.rule_id || issue.title;
+        const current = counts.get(key) || { title: issue.title, count: 0, severity: issue.severity };
+        current.count += 1;
+        current.severity = current.severity === 'blocking' || issue.severity === 'blocking' ? 'blocking' : 'warning';
+        counts.set(key, current);
+      });
+    });
+
+    return Array.from(counts.values())
+      .sort((left, right) => {
+        if (left.severity !== right.severity) return left.severity === 'blocking' ? -1 : 1;
+        return right.count - left.count;
+      })
+      .slice(0, 4);
+  }, [filteredDashboardData]);
+
   const actionCenterItems = useMemo<ActionCenterItem[]>(() => {
     const invalidObservations = allObservations.length - validatedCount;
-    const reportsNotExported = dashboardData.filter((entry) => hasReportGenerated(entry.mission) && !hasReportExported(entry.mission)).length;
-    const missionsWithoutGeneratedReport = dashboardData.filter(
+    const reportsNotExported = filteredDashboardData.filter((entry) => hasReportGenerated(entry.mission) && !hasReportExported(entry.mission)).length;
+    const missionsWithoutGeneratedReport = filteredDashboardData.filter(
       (entry) => hasObservationsParsed(entry.mission, entry.observations) && !hasReportGenerated(entry.mission)
     ).length;
 
@@ -484,21 +693,45 @@ export default function DashboardPage() {
     }
 
     return items.slice(0, 5);
-  }, [actionFeedbackCount, allObservations.length, dashboardData, reportsBlocked, validatedCount]);
+  }, [actionFeedbackCount, allObservations.length, filteredDashboardData, reportsBlocked, validatedCount]);
+
+  const executiveSnapshot = [
+    {
+      label: 'Health',
+      value: `${missionHealthScore}%`,
+      detail: missionHealthScore >= 85 ? 'Ready for leadership review.' : missionHealthScore >= 65 ? 'Needs targeted follow-up.' : 'Requires immediate attention.'
+    },
+    {
+      label: 'Top risk area',
+      value: topRiskArea,
+      detail: criticalHighCount > 0 ? `${criticalHighCount} Critical / High observation${criticalHighCount === 1 ? '' : 's'}` : 'No Critical / High observations.'
+    },
+    {
+      label: 'Quality Gate',
+      value: reportsBlocked > 0 ? `${reportsBlocked} blocked` : 'Clear',
+      detail: qualityScores.length ? `${averageQualityScore}% average readiness score.` : 'No Quality Gate data yet.'
+    },
+    {
+      label: 'Next action',
+      value: actionCenterItems[0]?.title || 'No action',
+      detail: actionCenterItems[0]?.detail || 'Scope is currently clean.'
+    }
+  ];
 
   return (
-    <div className="dashboard-studio space-y-6">
+    <>
+    <div className={`dashboard-studio space-y-6 ${filterTransitionActive ? 'pwc-mission-page-enter' : ''}`}>
       <section className="dashboard-studio-hero">
         <div className="dashboard-studio-brand">
           <span>{roleLabel}</span>
-          <strong>{activeMission?.client || activeMission?.name || 'Portfolio'} / {visibleMissionCount} mission{visibleMissionCount === 1 ? '' : 's'}</strong>
+          <strong>{dashboardScopeLabel} / {visibleMissionCount} mission{visibleMissionCount === 1 ? '' : 's'}</strong>
         </div>
 
         <div className="dashboard-studio-command">
           <div>
             <h1>Audit Performance Dashboard</h1>
             <p>
-              Dynamic overview of visible missions, quality gates, validation progress, report blockers, and reviewer feedback.
+              Dynamic overview of quality gates, validation progress, report blockers, and reviewer feedback.
             </p>
           </div>
 
@@ -523,11 +756,36 @@ export default function DashboardPage() {
         </div>
       )}
 
+      <div className="dashboard-studio-panel">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Filtre par mission</p>
+            <p className="mt-1 text-sm text-slate-500">{dashboardScopeText}</p>
+          </div>
+          <label className="w-full lg:max-w-xs">
+            <span className="sr-only">Mission</span>
+            <select
+              value={selectedMissionId}
+              onChange={(event) => handleMissionFilterChange(event.target.value)}
+              className="h-11 w-full truncate rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-[#ef5b0c] focus:ring-4 focus:ring-orange-100"
+              disabled={loadingDashboard || dashboardData.length === 0}
+            >
+              <option value={ALL_MISSIONS}>Toutes les missions</option>
+              {dashboardData.map((entry) => (
+                <option key={entry.mission.mission_id} value={entry.mission.mission_id}>
+                  {compactMissionLabel(entry.mission)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Total missions"
           value={formatNumber(visibleMissionCount)}
-          helper="Missions accessible to the current user role."
+          helper={selectedMission ? 'Selected mission in scope.' : 'Missions accessible to the current user role.'}
           icon={Target}
         />
         <KpiCard
@@ -578,6 +836,124 @@ export default function DashboardPage() {
           icon={MessageSquareText}
           tone={actionFeedbackCount > 0 ? 'warning' : 'success'}
         />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="dashboard-studio-panel">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-slate-500">Command center</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-900">Mission health and executive snapshot</h2>
+            </div>
+            <span className={`inline-flex shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold ring-1 ${healthTone(missionHealthScore)}`}>
+              {missionHealthScore}%
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {executiveSnapshot.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-100 bg-white/75 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
+                <p className="mt-2 line-clamp-2 text-base font-semibold text-slate-950">{item.value}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dashboard-studio-panel">
+          <div className="mb-6">
+            <p className="text-sm text-slate-500">Report readiness</p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900">Delivery checklist</h2>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-5">
+            {readinessItems.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-100 bg-white/75 p-4">
+                <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${item.complete ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {item.complete ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                </span>
+                <p className="mt-3 min-h-[40px] text-sm font-semibold leading-5 text-slate-900">{item.label}</p>
+                <p className="mt-2 text-xs text-slate-500">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1fr_0.75fr]">
+        <div className="dashboard-studio-panel">
+          <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-sm text-slate-500">Risk heatmap</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-900">Risk concentration by control area</h2>
+            </div>
+            <p className="text-sm text-slate-500">Top {riskHeatmapRows.length} area{riskHeatmapRows.length === 1 ? '' : 's'}</p>
+          </div>
+
+          {riskHeatmapRows.length === 0 ? (
+            <EmptyPanel title="No risk concentration yet" message="Parsed observations will populate the control-area heatmap." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-[640px] text-left text-sm">
+                <thead className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                  <tr>
+                    <th className="pb-3 font-semibold">Area</th>
+                    {(['Critical', 'High', 'Medium', 'Low'] as PriorityLevel[]).map((priority) => (
+                      <th key={priority} className="pb-3 text-center font-semibold">{priority}</th>
+                    ))}
+                    <th className="pb-3 text-right font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {riskHeatmapRows.map((row) => (
+                    <tr key={row.area}>
+                      <td className="max-w-[240px] py-3 pr-4 font-medium text-slate-800">
+                        <span className="line-clamp-2">{row.area}</span>
+                      </td>
+                      {(['Critical', 'High', 'Medium', 'Low'] as PriorityLevel[]).map((priority) => (
+                        <td key={priority} className="py-3 text-center">
+                          <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-3 text-sm font-semibold ${heatmapCellClass(row[priority], maxHeatmapValue, priority)}`}>
+                            {row[priority]}
+                          </span>
+                        </td>
+                      ))}
+                      <td className="py-3 text-right font-semibold text-slate-900">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="dashboard-studio-panel">
+          <div className="mb-6">
+            <p className="text-sm text-slate-500">Quality Gate breakdown</p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900">Main blockers and warnings</h2>
+          </div>
+
+          {qualityIssueSummary.length === 0 ? (
+            <EmptyPanel title="No Quality Gate issues" message="Generated reports with Quality Gate checks will show blockers here." />
+          ) : (
+            <div className="space-y-3">
+              {qualityIssueSummary.map((issue) => (
+                <div
+                  key={`${issue.severity}-${issue.title}`}
+                  className={`rounded-2xl border p-4 ${issue.severity === 'blocking' ? 'border-red-100 bg-red-50 text-red-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold leading-5">{issue.title}</p>
+                    <span className="shrink-0 rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold">
+                      {issue.count}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] opacity-75">{issue.severity}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="dashboard-studio-panel">
@@ -774,5 +1150,22 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+    {filterTransitionKey > 0 && (
+      <div key={filterTransitionKey} className="pwc-mission-transition" aria-hidden="true">
+        <div className="pwc-mission-transition-surface">
+          <span className="pwc-mission-transition-line pwc-mission-transition-yellow" />
+          <span className="pwc-mission-transition-line pwc-mission-transition-red" />
+          <span className="pwc-mission-transition-line pwc-mission-transition-orange" />
+          <div className="pwc-mission-transition-label">
+            <img src={logo} alt="" />
+            <div>
+              <span>Dashboard scope</span>
+              <strong>Refreshing mission view</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

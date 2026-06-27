@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from io import BytesIO
 from textwrap import shorten
 
@@ -9,6 +11,8 @@ from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
 from app.models.export_models import ExportReportRequest
+
+logger = logging.getLogger(__name__)
 
 CONTROL_SHORT_LABELS = {
     "APD-01": "Révocation des accès",
@@ -215,6 +219,8 @@ def _finding_slide(prs: Presentation, finding, footer: str) -> None:
 
 
 def build_report_pptx_docker(result: ExportReportRequest) -> BytesIO:
+    total_started = time.perf_counter()
+    slides_started = time.perf_counter()
     data = result.structured_output
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -262,8 +268,16 @@ def build_report_pptx_docker(result: ExportReportRequest) -> BytesIO:
         _table_like_slide(prs, "Consolidated action plan", action_rows[start : start + 7], footer)
 
     _bullet_slide(prs, "Conclusion", [_safe(data.conclusion), _safe(data.maturity_assessment), _safe(data.priority_insight)], footer)
+    logger.info("Report export timing Docker PPTX slides built in %.2fs slides=%s", time.perf_counter() - slides_started, len(prs.slides))
 
+    save_started = time.perf_counter()
     output = BytesIO()
     prs.save(output)
     output.seek(0)
+    logger.info(
+        "Report export timing Docker PPTX file saved in %.2fs bytes=%s",
+        time.perf_counter() - save_started,
+        len(output.getvalue()),
+    )
+    logger.info("Report export timing Docker PPTX export completed in %.2fs", time.perf_counter() - total_started)
     return output

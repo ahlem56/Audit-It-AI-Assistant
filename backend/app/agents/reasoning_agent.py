@@ -137,6 +137,11 @@ def _invoke_reasoning_prompt(prompt_template: str, observations: list[AuditObser
         control_catalog_json=json.dumps(_control_catalog_subset(observations), ensure_ascii=False, indent=2),
     )
     parsed = extract_json_from_response(llm.invoke(prompt).content)
+    if isinstance(parsed, dict):
+        for key in ("observations", "reasoning", "items", "results", "data"):
+            value = parsed.get(key)
+            if isinstance(value, list):
+                return value
     if not isinstance(parsed, list):
         raise ValueError("Reasoning agent did not return a JSON list.")
     return parsed

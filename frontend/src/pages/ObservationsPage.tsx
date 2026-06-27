@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, MessageSquare, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
 import PriorityBadge from '../components/PriorityBadge';
 import { useMissionContext } from '../context/MissionContext';
+import { useAuthContext } from '../context/AuthContext';
 import type { Observation, PriorityLevel } from '../types';
 
 const priorityOptions: PriorityLevel[] = ['Critical', 'High', 'Medium', 'Low'];
@@ -32,6 +33,7 @@ function buildRiskNarrative(observation: Observation) {
 export default function ObservationsPage() {
   const navigate = useNavigate();
   const { activeMission, observations, updateObservations, recalculatePriorities } = useMissionContext();
+  const { user } = useAuthContext();
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(null);
   const [localObservations, setLocalObservations] = useState<Observation[]>(observations);
   const [saving, setSaving] = useState(false);
@@ -40,6 +42,7 @@ export default function ObservationsPage() {
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<'All' | PriorityLevel>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const isManager = user?.role === 'manager';
 
   useEffect(() => {
     setLocalObservations(observations);
@@ -98,6 +101,8 @@ export default function ObservationsPage() {
   };
 
   const handleValidateAll = async () => {
+    if (!isManager) return;
+
     const validatedObservations = localObservations.map((observation) => ({
       ...observation,
       status: 'Validated',
@@ -229,7 +234,8 @@ export default function ObservationsPage() {
           <button
             type="button"
             onClick={handleValidateAll}
-            disabled={validatingAll || saving || recalculating || localObservations.length === 0}
+            disabled={!isManager || validatingAll || saving || recalculating || localObservations.length === 0}
+            title={isManager ? 'Validate all observations' : 'Only managers can validate observations'}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -255,6 +261,12 @@ export default function ObservationsPage() {
           </div>
         </div>
       </section>
+
+      {!isManager ? (
+        <div className="rounded-3xl border border-amber-100 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-800">
+          Observation validation is restricted to managers. Auditors can update observation content, priorities, comments, and report inclusion, but cannot mark observations as validated.
+        </div>
+      ) : null}
 
       <section className="observations-studio-panel">
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_auto]">
@@ -533,6 +545,8 @@ export default function ObservationsPage() {
                   Status
                   <select
                     value={selectedObservation.status}
+                    disabled={!isManager}
+                    title={isManager ? 'Update validation status' : 'Only managers can update validation status'}
                     onChange={(event) =>
                       updateObservation(selectedObservation.id, (observation) => ({
                         ...observation,
@@ -540,7 +554,7 @@ export default function ObservationsPage() {
                         statut_validation: event.target.value
                       }))
                     }
-                    className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"
+                    className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
                     {validationStatusOptions.map((status) => (
                       <option key={status || 'blank'} value={status}>
@@ -548,6 +562,9 @@ export default function ObservationsPage() {
                       </option>
                     ))}
                   </select>
+                  {!isManager ? (
+                    <span className="mt-2 block text-xs font-medium text-amber-700">Manager validation only</span>
+                  ) : null}
                 </label>
 
                 <div>

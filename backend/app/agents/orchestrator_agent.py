@@ -38,7 +38,7 @@ def route_request(user_input: str, mission_id: str | None = None, *, user_id: st
 
     audit_input = load_mission_audit_input(mission_id, user_id=user_id) if mission_id else None
     report_result = load_mission_report_cache(mission_id, user_id=user_id) if mission_id else None
-    mission_result = answer_mission_question(user_input, audit_input)
+    mission_result = answer_mission_question(user_input, audit_input, report_result)
     if mission_result is not None:
         mission_result.update(
             {

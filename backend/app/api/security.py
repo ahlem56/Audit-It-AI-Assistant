@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from fastapi.concurrency import run_in_threadpool
 
-from app.services.auth_service import require_authenticated_user
+from app.services.auth_service import require_manager_user
 from app.services.mission_service import get_all_missions
 from app.services.security_audit_service import list_security_events, verify_event_chain
 
@@ -37,6 +37,6 @@ def _visible_events_for_user(user: dict, limit: int) -> dict:
 @router.get("/audit-events")
 async def get_security_audit_events(
     limit: int = Query(default=100, ge=1, le=500),
-    user=Depends(require_authenticated_user),
+    user=Depends(require_manager_user),
 ):
     return await run_in_threadpool(_visible_events_for_user, user, limit)

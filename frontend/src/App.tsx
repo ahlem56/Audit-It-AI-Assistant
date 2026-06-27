@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type AnimationEvent, type ReactNode } from
 import { Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import NotificationToaster from './components/NotificationToaster';
+import FloatingChatButton from './components/FloatingChatButton';
 import HomePage from './pages/HomePage';
 import ObservationsPage from './pages/ObservationsPage';
 import ChatPage from './pages/ChatPage';
@@ -50,6 +51,16 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   if (authEnabled && !authenticated) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?next=${next}`} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function ManagerOnlyRoute({ children }: { children: ReactNode }) {
+  const { user } = useAuthContext();
+
+  if (user?.role !== 'manager') {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -121,7 +132,14 @@ function AppShell() {
                 <Route path="/feedback" element={<FeedbackPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
-                <Route path="/security" element={<SecurityPage />} />
+                <Route
+                  path="/security"
+                  element={
+                    <ManagerOnlyRoute>
+                      <SecurityPage />
+                    </ManagerOnlyRoute>
+                  }
+                />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>
@@ -151,6 +169,7 @@ function AppShell() {
             )}
           </div>
         </main>
+        <FloatingChatButton />
         <NotificationToaster />
       </div>
     </div>

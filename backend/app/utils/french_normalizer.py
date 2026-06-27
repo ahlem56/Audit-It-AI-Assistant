@@ -174,7 +174,7 @@ _PHRASE_PATTERNS = [
     (re.compile(r"\bpresence\s+d\s+elements\b", re.IGNORECASE), "présence d'éléments"),
     (re.compile(r"\bbase\s+sur\b", re.IGNORECASE), "basé sur"),
     (re.compile(r"\bpreuve attendue\s*:\s*preuve attendue\s*:\s*", re.IGNORECASE), "Preuve attendue : "),
-    (re.compile(r"\bpreuves?\s+attendues?\s*:\s*produire et archiver les preuves suivantes\s*:\s*", re.IGNORECASE), "Produire et archiver les preuves suivantes : "),
+    (re.compile(r"\bpreuves?\s+attendues?\s*:\s*produire et archiver les preuves suivantes\s*:\s*", re.IGNORECASE), "Preuves attendues : "),
 ]
 
 

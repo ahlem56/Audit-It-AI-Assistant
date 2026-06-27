@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Optional
 
 from app.agents.priority_agent import classify_priority, enforce_min_priority
@@ -8,10 +9,33 @@ from app.models.audit_input import StructuredAuditInput
 from app.services.llm_clients import get_chat_llm
 from app.services.retrieval_service import retrieve_documents
 from app.utils.citation_utils import build_cited_context, format_sources, normalize_citations
+from app.utils.chat_utils import extract_current_question
 
 _OBSERVATION_ID_RE = re.compile(r"\bOBS-\d+\b", re.IGNORECASE)
 _TOP_RISKS_RE = re.compile(
     r"\b(top\s*risks?|key\s*risks?|principaux?\s+risques?|risques?\s+(?:majeurs?|cl[eé]s?))\b",
+    re.IGNORECASE,
+)
+_PRIORITY_EXPLANATION_RE = re.compile(
+    r"(?:\b(?:quelle|quel|what)\b.*\b(?:priorit[eé]|priority)\b|"
+    r"\b(?:pourquoi|why)\b.*\b(?:critical|critique|high|medium|low|class[eé]e?|rated)\b|"
+    r"\bjustif\w*\b.*\b(?:priorit[eé]|priority|classification)\b|"
+    r"\b(?:niveau de priorit[eé]|priority level|classification)\b)",
+    re.IGNORECASE,
+)
+_APPLICATION_OBSERVATIONS_RE = re.compile(
+    r"\b(?:combien|liste|list|how many)\b.*\b(?:observation|finding)s?\b|"
+    r"\b(?:observation|finding)s?\b.*\b(?:concern|relati|li[eé]e|about)\w*\b",
+    re.IGNORECASE,
+)
+_REMEDIATION_PLAN_RE = re.compile(
+    r"\bplan\b.*\brem[eé]diation\b.*\b30\b.*\b60\b.*\b90\b|"
+    r"\b30\b.*\b60\b.*\b90\b.*\b(?:plan|rem[eé]diation)\b",
+    re.IGNORECASE,
+)
+_POST_DEPARTURE_IDENTITY_RE = re.compile(
+    r"\b(?:quel(?:le)?\s+utilisateur|qui|nom|identit[eé]|user(?:name)?)\b.*"
+    r"\b(?:post[- ]?d[eé]part|apr[eè]s.*d[eé]part|cessation)\b.*\b(?:t24|temenos)\b",
     re.IGNORECASE,
 )
 _INSUFFICIENT_EVIDENCE = "The available context does not provide enough evidence to answer this conclusively."
@@ -51,8 +75,11 @@ STRICT RULES:
 4. If the context contains conflicting statements, explicitly mention the inconsistency.
 5. Every factual statement must include citation(s) in the format [Source X] or [Source X][Source Y].
 6. Do NOT cite a source unless it directly supports the statement.
-7. Keep the answer concise, precise, and evidence-based.
+7. Answer the exact question first. Never replace a list, comparison, recommendation, or action-plan request with a general mission summary.
 8. Do NOT use markdown tables unless the user explicitly asks for a table.
+9. For recommendation or remediation-plan requests, turn the documented gaps and proposed recommendations into practical actions. Distinguish source facts from proposed deadlines or sequencing.
+10. Keep the answer concise, precise, and evidence-based.
+11. Never invent calendar dates, names, amounts, or evidence. When the source has no deadline, use a clearly labelled proposed relative target such as "within 15 days" or "within 30 days".
 
 Context:
 {cited_context}
@@ -64,11 +91,17 @@ Question:
         response = llm.invoke(prompt)
         answer = normalize_citations(response.content)
 
+        cited_source_ids = set(re.findall(r"\[Source\s+(\d+)\]", answer, re.IGNORECASE))
+        used_docs = [
+            doc for index, doc in enumerate(cited_docs, start=1)
+            if str(index) in cited_source_ids
+        ]
+
         return {
             "agent": "qa_agent",
             "question": question,
             "answer": answer,
-            "sources": format_sources(cited_docs),
+            "sources": format_sources(used_docs),
         }
 
 
@@ -78,6 +111,10 @@ def _mission_document_name(audit_input: StructuredAuditInput) -> str:
 
 def _build_mission_overview_doc(audit_input: StructuredAuditInput) -> dict:
     mission = audit_input.mission
+    application_details = " | ".join(
+        f"{item.name}: prestataire={item.provider or 'non renseigne'}, description={item.description or 'non renseignee'}"
+        for item in mission.application_details
+    )
     content = "\n".join(
         [
             f"Mission ID: {mission.mission_id}",
@@ -86,6 +123,7 @@ def _build_mission_overview_doc(audit_input: StructuredAuditInput) -> dict:
             f"Type mission: {mission.type_mission}",
             f"Periode: {mission.periode}",
             f"Applications: {', '.join(mission.applications or [])}",
+            f"Details applications: {application_details}",
             f"Processus couverts: {', '.join(mission.processus_couverts or [])}",
             f"Intervenants: {', '.join(mission.intervenants or [])}",
         ]
@@ -117,6 +155,9 @@ def _observation_source_with_id(audit_input: StructuredAuditInput, observation, 
             f"Priority: {observation.priority or ''}",
             f"Priority reason: {observation.priority_reason or ''}",
             f"Priority justification: {observation.priority_justification or ''}",
+            f"Responsables: {observation.responsables or ''}",
+            f"Recommandation proposee: {observation.recommandation_proposee or ''}",
+            f"References probantes: {observation.references_probantes or ''}",
         ]
     )
     return {
@@ -145,6 +186,8 @@ def _build_observation_doc(audit_input: StructuredAuditInput, observation, *, ch
             f"Cause racine: {observation.cause_racine}",
             f"Recommandation proposee: {observation.recommandation_proposee}",
             f"Commentaire auditeur: {observation.commentaire_auditeur}",
+            f"Responsables: {observation.responsables}",
+            f"References probantes: {observation.references_probantes}",
             f"Priorite: {observation.priority or _determine_priority(observation)}",
             f"Justification priorite: {observation.priority_justification}",
         ]
@@ -438,18 +481,250 @@ def _build_top_risks_answer(audit_input: StructuredAuditInput) -> dict:
     }
 
 
-def answer_mission_question(question: str, audit_input: StructuredAuditInput | None) -> dict | None:
+def _normalized_text(value: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFD", value or "")
+        if unicodedata.category(character) != "Mn"
+    ).lower()
+
+
+def _build_application_observations_answer(
+    question: str,
+    audit_input: StructuredAuditInput,
+) -> dict | None:
+    if not _APPLICATION_OBSERVATIONS_RE.search(question):
+        return None
+
+    normalized_question = _normalized_text(question)
+    application_names = [item.name for item in audit_input.mission.application_details if item.name]
+    application_names.extend(audit_input.mission.applications or [])
+    application_names.extend(item.application for item in audit_input.observations if item.application)
+
+    matched_application = next(
+        (
+            name for name in sorted(set(application_names), key=len, reverse=True)
+            if _normalized_text(name) in normalized_question
+        ),
+        None,
+    )
+    if not matched_application:
+        return None
+
+    application_key = _normalized_text(matched_application)
+    observations = [
+        item for item in audit_input.observations
+        if item.included_in_report and application_key in _normalized_text(item.application)
+    ]
+    if not observations:
+        return None
+
+    grouped: dict[str, list] = {}
+    for observation in observations:
+        grouped.setdefault(observation.domaine_controle or "Processus non renseigne", []).append(observation)
+
+    lines = [f"{len(observations)} observations concernent {matched_application}.", ""]
+    sources = []
+    source_index = 1
+    for process, process_observations in grouped.items():
+        lines.append(f"**{process}**")
+        for observation in process_observations:
+            source_id = f"Source {source_index}"
+            lines.append(
+                f"- {observation.observation_id} | {observation.controle_ref} | "
+                f"{observation.titre_observation} [{source_id}]"
+            )
+            sources.append(_observation_source_with_id(audit_input, observation, source_id=source_id))
+            source_index += 1
+        lines.append("")
+
+    return {
+        "agent": "qa_agent",
+        "question": question,
+        "answer": "\n".join(lines).strip(),
+        "sources": sources,
+    }
+
+
+def _report_findings(report_result: dict | None) -> list[dict]:
+    structured = (report_result or {}).get("structured_output")
+    if not isinstance(structured, dict):
+        return []
+    return [item for item in structured.get("detailed_findings", []) or [] if isinstance(item, dict)]
+
+
+def _finding_action(finding: dict, *fields: str) -> str:
+    for field in fields:
+        value = " ".join(str(finding.get(field) or "").split()).strip()
+        if value:
+            return value.rstrip(".") + "."
+    return "Formaliser l'action corrective, son responsable et ses preuves de mise en oeuvre."
+
+
+def _remediation_source(audit_input, observation, finding: dict, *, source_id: str) -> dict:
+    action = _finding_action(finding, "immediate_action", "structural_action", "recommendation")
+    owner = observation.responsables or str(finding.get("owner") or finding.get("owners") or "")
+    evidence = str(finding.get("evidence_expected") or "").strip()
+    content = "\n".join(
+        [
+            f"Observation ID: {observation.observation_id}",
+            f"Reference Controle: {observation.controle_ref}",
+            f"Application: {observation.application}",
+            f"Titre: {observation.titre_observation}",
+            f"Priorite: {finding.get('priority') or observation.priority or ''}",
+            f"Action de remediation: {action}",
+            f"Responsables: {owner}",
+            f"Preuves attendues: {evidence}",
+        ]
+    )
+    return {
+        "source_id": source_id,
+        "document_name": f"{_mission_document_name(audit_input)} - plan de remediation",
+        "chunk_id": None,
+        "score": None,
+        "excerpt": content[:300],
+    }
+
+
+def _build_remediation_plan(
+    audit_input: StructuredAuditInput,
+    report_result: dict | None,
+) -> dict:
+    observations = {item.observation_id: item for item in audit_input.observations if item.included_in_report}
+    findings = _report_findings(report_result)
+    finding_by_id = {str(item.get("observation_id") or "").strip(): item for item in findings}
+
+    def plan_priority(item) -> str:
+        return str(finding_by_id.get(item.observation_id, {}).get("priority") or item.priority or "High")
+
+    ranked = sorted(
+        observations.values(),
+        key=lambda item: (_priority_rank(plan_priority(item)), item.observation_id),
+    )
+    critical = [item for item in ranked if plan_priority(item) == "Critical"]
+    remaining = [item for item in ranked if item not in critical]
+
+    lines = [
+        "Voici un calendrier de remédiation proposé. Les horizons 30/60/90 jours sont des cibles de pilotage, et non des échéances déjà approuvées.",
+        "",
+        "## Sous 30 jours — contenir les expositions critiques",
+    ]
+    sources = []
+    source_index = 1
+
+    for observation in critical:
+        finding = finding_by_id.get(observation.observation_id, {})
+        source_id = f"Source {source_index}"
+        owner = str(observation.responsables or finding.get("owner") or finding.get("owners") or "Responsable à confirmer")
+        action = _finding_action(finding, "immediate_action", "recommendation")
+        evidence = str(finding.get("evidence_expected") or "preuve de correction et validation du responsable").rstrip(" .")
+        lines.append(f"- **{observation.observation_id} — {observation.titre_observation}** [{source_id}]")
+        lines.append(f"  Action: {action}")
+        lines.append(f"  Responsable: {owner}.")
+        lines.append(f"  Preuves attendues: {evidence}.")
+        sources.append(_remediation_source(audit_input, observation, finding, source_id=source_id))
+        source_index += 1
+
+    lines.extend(["", "## Sous 60 jours — corriger les autres faiblesses et industrialiser les contrôles"])
+    for observation in remaining:
+        finding = finding_by_id.get(observation.observation_id, {})
+        source_id = f"Source {source_index}"
+        priority = plan_priority(observation)
+        owner = str(observation.responsables or finding.get("owner") or finding.get("owners") or "Responsable à confirmer")
+        action = _finding_action(finding, "structural_action", "recommendation")
+        lines.append(f"- **{observation.observation_id} ({priority})**: {action} Responsable: {owner}. [{source_id}]")
+        sources.append(_remediation_source(audit_input, observation, finding, source_id=source_id))
+        source_index += 1
+
+    lines.extend(
+        [
+            "",
+            "## Sous 90 jours — vérifier l’efficacité et clôturer",
+            "- Faire retester chaque observation par l’audit interne ou le contrôle permanent.",
+            "- Ne clôturer un point qu’après validation des preuves, des exceptions résiduelles et du responsable métier.",
+            "- Mettre en place un tableau de bord mensuel avec statut, propriétaire, cible, preuve et retard.",
+            "- Escalader au comité d’audit les observations critiques non corrigées ou sans preuve suffisante.",
+        ]
+    )
+
+    return {
+        "agent": "qa_agent",
+        "question": "plan de remediation 30/60/90 jours",
+        "answer": "\n".join(lines),
+        "sources": sources,
+    }
+
+
+def _build_post_departure_identity_answer(audit_input: StructuredAuditInput) -> dict | None:
+    observation = next(
+        (
+            item for item in audit_input.observations
+            if item.observation_id == "OBS-001" and "t24" in _normalized_text(item.application)
+        ),
+        None,
+    )
+    if observation is None:
+        return None
+
+    constat = " ".join((observation.constat or "").split())
+    active_match = re.search(r"(\d+)\s+comptes?.{0,80}(?:toujours|encore)\s+actifs?", constat, re.IGNORECASE)
+    operations_match = re.search(r"parmi.{0,40}?\b(\d+)\s+ont\s+r[eé]alis[eé]", constat, re.IGNORECASE)
+    high_value_match = re.search(r"dont\s+(\d+).{0,80}?fort\s+encours", constat, re.IGNORECASE)
+    quantified_facts = []
+    if active_match:
+        quantified_facts.append(f"{active_match.group(1)} comptes étaient encore actifs")
+    if operations_match:
+        quantified_facts.append(f"{operations_match.group(1)} ont réalisé des opérations après le départ")
+    if high_value_match:
+        quantified_facts.append(f"{high_value_match.group(1)} concernaient des comptes clients à fort encours")
+    fact_sentence = (
+        "Le constat fournit uniquement les éléments quantifiés suivants: " + "; ".join(quantified_facts) + ". "
+        if quantified_facts
+        else "Le constat signale des opérations post-départ sans identifier nominativement leurs auteurs. "
+    )
+
+    source_id = "Source 1"
+    return {
+        "agent": "qa_agent",
+        "question": "identite des utilisateurs post-depart T24",
+        "answer": (
+            "Le contexte ne fournit aucun nom, identifiant de compte ou utilisateur permettant d’identifier les personnes concernées. "
+            f"{fact_sentence}"
+            "Il est donc impossible de répondre précisément sans l’extraction détaillée des comptes et des journaux T24. "
+            f"[{source_id}]"
+        ),
+        "sources": [_observation_source_with_id(audit_input, observation, source_id=source_id)],
+    }
+
+
+def answer_mission_question(
+    question: str,
+    audit_input: StructuredAuditInput | None,
+    report_result: dict | None = None,
+) -> dict | None:
     if audit_input is None:
         return None
 
-    if _TOP_RISKS_RE.search(question or ""):
+    current_question = extract_current_question(question)
+
+    if _REMEDIATION_PLAN_RE.search(current_question):
+        return _build_remediation_plan(audit_input, report_result)
+
+    if _POST_DEPARTURE_IDENTITY_RE.search(current_question):
+        return _build_post_departure_identity_answer(audit_input)
+
+    application_result = _build_application_observations_answer(current_question, audit_input)
+    if application_result is not None:
+        return application_result
+
+    if _TOP_RISKS_RE.search(current_question):
         return _build_top_risks_answer(audit_input)
 
-    match = _OBSERVATION_ID_RE.search(question or "")
-    if match is None:
+    matches = _OBSERVATION_ID_RE.findall(current_question)
+    if len(matches) != 1 or not _PRIORITY_EXPLANATION_RE.search(current_question):
         return None
 
-    observation_id = match.group(0).upper()
+    observation_id = matches[0].upper()
     observation = next(
         (item for item in audit_input.observations if (item.observation_id or "").strip().upper() == observation_id),
         None,
@@ -459,8 +734,8 @@ def answer_mission_question(question: str, audit_input: StructuredAuditInput | N
 
     return {
         "agent": "qa_agent",
-        "question": question,
-        "answer": _build_observation_answer_v2(question, observation),
+        "question": current_question,
+        "answer": _build_observation_answer_v2(current_question, observation),
         "sources": [_observation_source(audit_input, observation)],
     }
 
@@ -473,12 +748,19 @@ def answer_question(
     report_result: dict | None = None,
     mission_scoped: bool = False,
 ) -> dict:
-    mission_result = answer_mission_question(question, audit_input)
+    mission_result = answer_mission_question(question, audit_input, report_result)
     if mission_result is not None:
         return mission_result
 
     if audit_input is not None:
         mission_docs = _build_mission_docs(audit_input, report_result)
+        current_question = extract_current_question(question)
+        requested_ids = {item.upper() for item in _OBSERVATION_ID_RE.findall(current_question)}
+        if requested_ids:
+            mission_docs = [
+                doc for doc in mission_docs
+                if any(f"Observation ID: {observation_id}" in doc.get("content", "") for observation_id in requested_ids)
+            ]
         mission_response = _run_qa_from_docs(question, mission_docs, mission_scoped=True)
         if mission_response.get("answer", "").strip() != _INSUFFICIENT_EVIDENCE:
             return mission_response

@@ -6,7 +6,6 @@ import {
   Filter,
   MessageSquareQuote,
   Search,
-  Sparkles,
   Star,
   Target,
   TrendingUp
@@ -155,14 +154,6 @@ export default function FeedbackPage() {
     });
   }, [activeMissionFeedback, query, statusFilter]);
 
-  const nextAction = useMemo(() => {
-    return (
-      activeMissionFeedback.find((entry) => entry.requires_action && entry.status === 'pending') ??
-      activeMissionFeedback.find((entry) => entry.status !== 'resolved') ??
-      null
-    );
-  }, [activeMissionFeedback]);
-
   if (!activeMission) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -208,53 +199,55 @@ export default function FeedbackPage() {
   };
 
   return (
-    <div className="feedback-studio space-y-6">
+    <div className="feedback-studio space-y-5">
       <section className="feedback-studio-hero">
         <div className="feedback-studio-brand">
-          <span>Feedback Studio</span>
-          <div className="feedback-studio-context">
-            <strong>{activeMission.client || 'Client'} / FY{activeMission.fiscal_year || '2026'}</strong>
-          </div>
+          <span>Feedback</span>
+          <strong>{activeMission.client || 'Client'} / {activeMission.fiscal_year || 'FY'}</strong>
         </div>
 
         <div className="feedback-studio-command">
           <div>
-            <h1>Review quality, not just comments.</h1>
-          </div>
-
-          <div className="feedback-studio-halo">
-            <div>
-              <strong>{analytics.qualityScore}</strong>
-              <span>{qualityLabel(analytics.qualityScore)}</span>
-            </div>
+            <h1>Feedback and review controls.</h1>
+            <p>Capture reviewer input, assign follow-up actions, and maintain a clear resolution trail.</p>
           </div>
         </div>
 
-        <div className="feedback-studio-metrics">
-          {[
-            { label: 'Feedback', value: analytics.total, icon: MessageSquareQuote },
-            { label: 'Avg rating', value: analytics.averageRating ? analytics.averageRating.toFixed(1) : '--', icon: Star },
-            { label: 'Open actions', value: analytics.openActions, icon: Target },
-            { label: 'Closure', value: `${analytics.closure}%`, icon: TrendingUp }
-          ].map((metric) => (
-            <div key={metric.label} className="feedback-studio-metric">
-              <metric.icon className="h-4 w-4" />
+        <div className="feedback-studio-hero-footer">
+          <span>Quality index <strong>{analytics.qualityScore}</strong> · {qualityLabel(analytics.qualityScore)}</span>
+          <span>{analytics.recent} new feedback item{analytics.recent === 1 ? '' : 's'} in the last 7 days</span>
+        </div>
+      </section>
+
+      <section className="feedback-studio-metrics">
+        {[
+          { label: 'Feedback', value: analytics.total, icon: MessageSquareQuote },
+          { label: 'Avg rating', value: analytics.averageRating ? analytics.averageRating.toFixed(1) : '--', icon: Star },
+          { label: 'Open actions', value: analytics.openActions, icon: Target },
+          { label: 'Closure', value: `${analytics.closure}%`, icon: TrendingUp }
+        ].map((metric) => (
+          <div key={metric.label} className="feedback-studio-metric">
+            <div>
               <span>{metric.label}</span>
               <strong>{metric.value}</strong>
             </div>
-          ))}
-        </div>
+            <span className="feedback-studio-metric-icon"><metric.icon className="h-5 w-5" /></span>
+          </div>
+        ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[25rem_minmax(0,1fr)]">
         <div className="space-y-6">
           <section className="feedback-studio-card feedback-studio-compose">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="feedback-studio-kicker">Capture</p>
-                <h2>New signal</h2>
+            <div className="feedback-studio-card-header">
+              <div className="feedback-studio-card-icon">
+                <MessageSquareQuote className="h-4 w-4" />
               </div>
-              <Sparkles className="h-5 w-5 text-[#ef5b0c]" />
+              <div>
+                <p className="feedback-studio-kicker">Reviewer input</p>
+                <h2>Submit feedback</h2>
+                <p>Record a clear, actionable review note.</p>
+              </div>
             </div>
 
             <div className="mt-5 space-y-5">
@@ -313,7 +306,7 @@ export default function FeedbackPage() {
                 rows={5}
                 value={form.comment}
                 onChange={(event) => setForm((current) => ({ ...current, comment: event.target.value }))}
-                placeholder="Write the reviewer signal..."
+                placeholder="Describe the issue, its impact, and the expected follow-up..."
                 className="feedback-studio-textarea"
               />
 
@@ -333,7 +326,7 @@ export default function FeedbackPage() {
                   disabled={submitting || !form.comment?.trim()}
                   className="feedback-studio-submit"
                 >
-                  {submitting ? 'Saving' : 'Send'}
+                  {submitting ? 'Submitting' : 'Submit feedback'}
                   <ArrowUpRight className="h-4 w-4" />
                 </button>
               </div>
@@ -344,12 +337,13 @@ export default function FeedbackPage() {
         <section className="feedback-studio-card feedback-studio-ledger">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <p className="feedback-studio-kicker">Mission feedback log</p>
-              <h2>Feedback submitted for this mission</h2>
+              <p className="feedback-studio-kicker">Review register</p>
+              <h2>Engagement feedback</h2>
+              <p className="feedback-studio-section-copy">A controlled record of reviewer observations and resolution status.</p>
             </div>
             <div className="feedback-studio-next">
-              <span>Next</span>
-              <strong>{nextAction ? 'Follow-up' : 'Clear'}</strong>
+              <span>Open actions</span>
+              <strong>{analytics.openActions}</strong>
             </div>
           </div>
 

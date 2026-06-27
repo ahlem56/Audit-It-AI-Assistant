@@ -40,7 +40,7 @@ export default function Sidebar() {
       items: [
         { to: '/settings', label: text.sidebar.settings },
         { to: '/notifications', label: 'Notifications' },
-        { to: '/security', label: 'Security' }
+        ...(user?.role === 'manager' ? [{ to: '/security', label: 'Security' }] : [])
       ]
     }
   ];

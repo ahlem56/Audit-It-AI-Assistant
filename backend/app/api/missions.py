@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
@@ -52,6 +55,17 @@ MISSIONS_DIR = Path("app/data/missions")
 REPORT_CACHE_MAX_AGE = timedelta(hours=1)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _duration(started: float) -> float:
+    return time.perf_counter() - started
+
+
+def _log_report_timing(export_id: str, step: str, started: float, **metadata) -> None:
+    details = " ".join(f"{key}={value}" for key, value in metadata.items() if value is not None)
+    suffix = f" {details}" if details else ""
+    logger.info("Report export timing [%s] %s completed in %.2fs%s", export_id, step, _duration(started), suffix)
 
 
 def _mission_report_filename(mission: dict, mission_id: str) -> str:
@@ -292,18 +306,41 @@ async def export_report(
     format: Literal["pptx", "pdf", "docx"] = Query(default="pptx"),
     user=Depends(require_authenticated_user),
 ):
+    export_id = uuid.uuid4().hex[:8]
+    total_started = time.perf_counter()
+    logger.info(
+        "Report export timing [%s] export started mission_id=%s format=%s user_id=%s",
+        export_id,
+        mission_id,
+        format,
+        user.get("user_id"),
+    )
+
+    step_started = time.perf_counter()
     audit_input = await run_in_threadpool(load_mission_audit_input, mission_id, user_id=user["user_id"])
     mission = await run_in_threadpool(get_mission, mission_id, user_id=user["user_id"])
+    _log_report_timing(export_id, "loading mission data", step_started, mission_found=mission is not None, audit_input_found=audit_input is not None)
     if audit_input is None or mission is None:
         raise HTTPException(status_code=404, detail="Mission report data not found.")
 
+    step_started = time.perf_counter()
     result = await run_in_threadpool(_load_cached_report, mission_id, user["user_id"])
+    cache_hit = result is not None
+    _log_report_timing(export_id, "loading report cache", step_started, cache_hit=cache_hit)
     if result is None:
+        step_started = time.perf_counter()
         result = await run_in_threadpool(_generate_and_cache_report, mission_id, audit_input, user["user_id"])
+        _log_report_timing(export_id, "generating report content", step_started)
+    else:
+        logger.info("Report export timing [%s] generating report content skipped cache_hit=True", export_id)
 
     try:
-        file_stream = await run_in_threadpool(build_export_file, result, format)
+        step_started = time.perf_counter()
+        file_stream = await run_in_threadpool(build_export_file, result, format, export_id=export_id)
+        file_size = len(file_stream.getvalue()) if hasattr(file_stream, "getvalue") else None
+        _log_report_timing(export_id, "building export file", step_started, format=format, bytes=file_size)
     except RuntimeError as exc:
+        logger.exception("Report export timing [%s] building export file failed after %.2fs", export_id, _duration(total_started))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     filename = _mission_report_filename_for_format(mission, mission_id, format)
     media_type = {
@@ -311,6 +348,8 @@ async def export_report(
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }[format]
+
+    step_started = time.perf_counter()
     await run_in_threadpool(
         update_mission,
         mission_id,
@@ -320,6 +359,9 @@ async def export_report(
         },
         user_id=user["user_id"],
     )
+    _log_report_timing(export_id, "saving mission export status", step_started)
+
+    step_started = time.perf_counter()
     finalized_mission = await run_in_threadpool(get_mission, mission_id, user_id=user["user_id"])
     if finalized_mission is not None:
         await run_in_threadpool(
@@ -333,6 +375,9 @@ async def export_report(
             related_entity_id=mission_id,
             actor=user,
         )
+    _log_report_timing(export_id, "creating export notifications", step_started, notified=finalized_mission is not None)
+
+    step_started = time.perf_counter()
     await run_in_threadpool(
         log_security_event,
         action="REPORT_EXPORTED",
@@ -342,6 +387,15 @@ async def export_report(
         resource_type="report",
         resource_id=filename,
         metadata={"format": format},
+    )
+    _log_report_timing(export_id, "logging security event", step_started)
+
+    logger.info(
+        "Report export timing [%s] returning response prepared in %.2fs filename=%s media_type=%s",
+        export_id,
+        _duration(total_started),
+        filename,
+        media_type,
     )
 
     return StreamingResponse(
